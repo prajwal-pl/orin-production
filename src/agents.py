@@ -1,6 +1,6 @@
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
-from schema import Classification, Verifier
+from src.schema import Classification, Verifier
 from dotenv import load_dotenv
 
 load_dotenv()
