@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
-from src.nodes import GraphState
-from src.nodes import (
+from orchestration.nodes import GraphState
+from orchestration.nodes import (
     classification_agent,
     mock_github_task,
     mock_gmail_task,

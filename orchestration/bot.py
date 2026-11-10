@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from src.nodes import GraphState
-from src.graph import graph
+from orchestration.nodes import GraphState
+from orchestration.graph import graph
 
 
 async def telegram_bot_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
