@@ -2,7 +2,7 @@
 
 > **Read this file at the start of every session before changing code.**
 > It is the shared context for humans and AI coding agents working on Orin.
-> Last updated: 2026-11-09
+> Last updated: 2026-11-24
 
 ---
 
@@ -12,7 +12,7 @@
 |---|---|
 | Project name | **Orin** (called **ORION** in the original design discussion) |
 | Repository | `orin` |
-| Package name in `pyproject.toml` | `morrow` *(legacy/inconsistent — see §9)* |
+| Package name in `pyproject.toml` | `orin` |
 | Current stage | Early prototype / demo |
 | Language | Python 3.14 (`.python-version`) |
 | Package manager | `uv` |
@@ -53,194 +53,81 @@ Everything in the architecture follows from that sentence:
 
 ---
 
-## 3. Current state (what actually exists)
+## 3. Current state
 
-This repository is a **walking skeleton**, not the full runtime.
+Phase 0 is a tested Telegram and LangGraph prototype. It classifies requests,
+runs mock Gmail or GitHub nodes, verifies their results, and retries failed
+verification at most three total executions. Other requests get an explicit
+unsupported response. The bot checks a Telegram user allowlist before invoking a
+model. Calls are async, with a configured primary model and optional backup.
+Credential-free tests cover routing, retry limits, authorization, and replies.
 
-Implemented:
-
-- Telegram long-polling bot (`python-telegram-bot`).
-- A compiled LangGraph with four nodes: classify → (gmail | github | other) → verify.
-- Two LLM agents built with `langchain.agents.create_agent`:
-  - classifier (structured output into `Classification`)
-  - verifier (structured output into `Verifier`)
-- Pydantic schemas for classification and verification.
-- Mock gmail/github task nodes that only `print()` and return a canned result.
-- `.env` loading for `OPENROUTER_API_KEY` and `TELEGRAM_BOT_TOKEN`.
-
-Not implemented yet:
-
-- FastAPI gateway, HTTP/WebSocket API, streaming.
-- SQLite persistence, sessions, tasks, checkpoints.
-- Memory (episodic/semantic/procedural/preference/working).
-- Skill registry/versioning/learning loop.
-- Provider router, fallback, token/context budget manager.
-- Real Gmail/GitHub/Notion/filesystem/terminal/browser/MCP integrations.
-- Subagents/delegation, scheduler, approvals UI.
-- Next.js/Tauri desktop control center.
-- ORION Hub / ORION Node split.
-- Tests, linting, CI, packaging.
-
-**Do not describe unimplemented features as done** — not in code, docs, or
-comments.
-
----
+Real integrations, durable state, memory, skills, budgets, FastAPI, and the
+Hub/Node architecture remain future work. Mock actions do not access accounts.
 
 ## 4. Repository map
 
-```
-orin/
-├── main.py              # Entry point: builds Telegram Application, registers handlers
-├── pyproject.toml       # uv project + dependencies (name is "morrow")
-├── uv.lock              # Locked dependency graph (committed)
-├── .python-version      # 3.14
-├── .env                 # LOCAL SECRETS — gitignored, never commit or echo
-├── .gitignore
-├── README.md            # User-facing overview
-├── AGENTS.md            # This file (agent/session context)
-└── src/                 # namespace package (no __init__.py)
-    ├── agents.py        # classifier + verifier (LangChain create_agent)
-    ├── bot.py           # Telegram message handler; builds GraphState; invokes graph
-    ├── graph.py         # LangGraph wiring (nodes + edges)
-    ├── nodes.py         # State TypedDict + node functions + routing
-    └── schema.py        # Classification and Verifier Pydantic models
-```
-
-### File responsibilities
-
-| File | Owns | Notes |
-|---|---|---|
-| `main.py` | Telegram app lifecycle | `/start` handler + text handler |
-| `src/bot.py` | Channel → runtime adapter | Builds initial state, awaits `graph.ainvoke`, replies |
-| `src/graph.py` | Orchestration topology | Single source of truth for edges |
-| `src/nodes.py` | State contract + node logic | Contains mock executors |
-| `src/agents.py` | Model configuration + prompts | Both agents currently use the same free model |
-| `src/schema.py` | Structured-output contracts | `Classification`, `Verifier` |
-
----
+| File | Responsibility |
+|---|---|
+| `main.py` | Startup validation and Telegram handlers |
+| `orchestration/bot.py` | Authorization, graph invocation, Telegram replies |
+| `orchestration/graph.py` | LangGraph topology and retry edges |
+| `orchestration/nodes.py` | State contract, async nodes, mock executors |
+| `orchestration/agents.py` | Model configuration and structured calls |
+| `orchestration/schema.py` | Classification and verification schemas |
+| `tests/test_phase0.py` | Credential-free unit and adapter tests |
+| `TODO.md` | Phase checklists and completion criteria |
 
 ## 5. How the prototype works today
 
-### 5.1 Request flow
+Authorized Telegram text enters the graph. The classifier routes Gmail and
+GitHub requests to mock executors and other requests to an unsupported response.
+The verifier runs after a mock executor. Recoverable verification failure repeats that mock
+node, at most three total executions. Real side-effecting tools need idempotency
+and approval controls before they can use this retry behavior.
 
-```
-Telegram user
-    │  text message
-    ▼
-main.py  (MessageHandler)
-    ▼
-src/bot.py :: telegram_bot_message
-    │  builds GraphState with defaults
-    ▼
-graph.ainvoke(state)
-    ▼
-START
-  │
-  ▼
-classify  (classification_agent)
-  │  LLM → Classification {type, intent, arguments}
-  │  type → service: gmail-task→gmail, github-task→github, other→other
-  ├── "github" ──▶ github (mock_github_task) ──▶ verify
-  ├── "gmail"  ──▶ gmail  (mock_gmail_task)  ──▶ verify
-  └── "other"  ─────────────────────────────▶ verify
-                                                  │
-                                                  ▼
-                                                END
-    ▼
-bot.py replies with result["final_response"]
-```
+### 5.1 State contract (`GraphState` in `orchestration/nodes.py`)
 
-### 5.2 State contract (`GraphState` in `src/nodes.py`)
-
-| Key | Type | Written by | Meaning |
-|---|---|---|---|
-| `user_id` | `str` | bot.py | Telegram user id (currently unused downstream) |
-| `message` | `str` | bot.py | Raw user request |
-| `intent` | `str` | classify | Extracted intent |
-| `service` | `Literal["gmail","github","other"]` | classify | Routing key |
-| `arguments` | `dict` | classify | Extracted task arguments |
-| `execution_result` | `dict` | executors | Mock result payload |
-| `execution_status` | `str` | executors | e.g. `completed` |
-| `verification_result` | `dict` | verifier (intended) | Verification payload |
-| `feedback` | `str` | verifier | Human-readable critique |
-| `retry_count` | `int` | verifier | Retry counter (currently LLM-supplied) |
-| `final_response` | `str` | verifier | Text sent back to the channel |
-
-### 5.3 Nodes
-
-| Node | Function | Behaviour |
+| Key | Type | Meaning |
 |---|---|---|
-| `classify` | `classification_agent` | Calls classifier, maps structured type to `service` |
-| `github` | `mock_github_task` | Prints arguments, returns canned success |
-| `gmail` | `mock_gmail_task` | Prints arguments, returns canned success |
-| `verify` | `verification_agent` | Calls verifier with execution result + full state |
+| `user_id` | `str` | Telegram user ID, omitted from verifier prompt |
+| `message` | `str` | User request |
+| `intent` | `str` | Classified intent |
+| `service` | `Literal["gmail","github","other"]` | Route |
+| `arguments` | `dict` | Classified arguments |
+| `execution_result` | `dict` | Mock result |
+| `execution_status` | `str` | Pending, completed, unsupported, or failed |
+| `verification_result` | `dict` | Verifier details |
+| `verification_status` | `Literal["pending","pass","retry","fail"]` | Retry decision |
+| `feedback` | `str` | Verifier feedback |
+| `retry_count` | `int` | Runtime-counted failed verification attempts |
+| `final_response` | `str` | Telegram reply |
 
-`other_task` and `verify_cycle` exist in `src/nodes.py` but are **not wired into
-the graph**.
+### 5.2 Model configuration
 
-### 5.4 Model configuration
-
-Both agents use:
-
-```python
-model="openrouter:nvidia/nemotron-3.5-lightning:free"
-```
-
-- Auth comes from `OPENROUTER_API_KEY`.
-- `create_agent(..., response_format=ToolStrategy(Model))` forces structured output.
-- No fallback model, retry policy, or token budget exists yet.
-- Free model availability changes frequently; do not assume this model will
-  remain available or remain free.
-
----
+`ORIN_MODEL` selects the primary model and defaults to
+`openrouter:nvidia/nemotron-3.5-lightning:free`. `ORIN_FALLBACK_MODEL` optionally
+selects one backup. A failed call or malformed structured response tries the
+backup once. No token budget, quota tracking, or general provider router exists.
 
 ## 6. Running the prototype
 
-### Prerequisites
-
-- Python 3.14 (see `.python-version`)
-- [`uv`](https://docs.astral.sh/uv/)
-- An OpenRouter API key
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-
-### Setup
-
-```bash
-uv sync
-```
-
-Create `.env` in the repo root (already gitignored):
+Python 3.14 and uv are specified in `.python-version` and `pyproject.toml`.
+Run `uv sync` to install locked dependencies. Set these values in the ignored
+`.env` file or environment:
 
 ```dotenv
-OPENROUTER_API_KEY=sk-or-...
 TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_ALLOWED_USER_IDS=123456789
+OPENROUTER_API_KEY=sk-or-...
+# ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
+# ORIN_FALLBACK_MODEL=openrouter:your-backup-model
 ```
 
-### Run
-
-```bash
-uv run main.py
-```
-
-Then message the bot on Telegram. `/start` returns a greeting; any other text is
-sent through the graph.
-
-### Minimal smoke checks (no network)
-
-```bash
-# Syntax/compile every source file
-uv run python - <<'PY'
-import pathlib
-for p in pathlib.Path(".").glob("**/*.py"):
-    if ".venv" in str(p):
-        continue
-    compile(p.read_text(), str(p), "exec")
-    print("OK", p)
-PY
-```
-
-There is no test suite yet. If you add tests, prefer `pytest` and keep them
-runnable without live provider/Telegram credentials by mocking the agents.
+Use comma-separated numeric IDs for multiple users. An OpenRouter key is
+required when either model uses OpenRouter. Startup validates configuration.
+Run `uv run main.py` and test with `uv run python -m pytest -q`. Tests use mocked
+models and Telegram messages.
 
 ---
 
@@ -393,7 +280,7 @@ write scopes independently.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **0. Prototype** | Telegram channel, LangGraph classify/verify, mock executors | **← we are here** |
+| **0. Prototype** | Telegram channel, LangGraph classify/verify, mock executors | Complete, credential-free tests pass |
 | **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, tool registry, SQLite, sessions, streaming | Not started |
 | **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Not started |
 | **3. Adaptive learning** | Episodic/semantic memory, skill creation/versioning, evaluator, rollback | Not started |
@@ -415,54 +302,26 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ---
 
-## 9. Known issues and landmines
+## 9. Current limits and decisions
 
-These are real defects/inconsistencies in the current prototype. Fix them only
-as part of an explicit task; do not silently "clean up" unrelated code.
-
-1. **State key mismatch.** `verification_agent` writes
-   `"verification_results"` (plural), but `GraphState` and the rest of the code
-   use `verification_result` (singular). This will fail LangGraph state
-   validation or silently lose the value.
-2. **Retry loop is not wired.** `verify_cycle` is defined but never added to the
-   graph; `verify` always goes to `END`. `retry_count` comes from the LLM rather
-   than being incremented deterministically.
-3. **`other_task` is dead code.** `other` routes directly to `verify`, so
-   non-Gmail/GitHub requests are never executed.
-4. **`verify_cycle` compares a dict to the string `"fail"`.**
-   `verification_result` is typed as `dict` in `GraphState`, but the cycle check
-   expects `"fail"`.
-5. **Blocking calls in async handler.** `classifier.invoke` / `verifier.invoke`
-   are synchronous inside the async Telegram handler; use `ainvoke` or a thread
-   offload.
-6. **No persistence.** Every message starts from a default state; `user_id` is
-   collected but not used. No sessions, checkpoints, or conversation history.
-7. **No error handling.** Provider failures, invalid JSON/structured output, and
-   Telegram errors propagate without a user-facing message.
-8. **No authentication/allowlist.** Anyone who discovers the bot can consume the
-   owner's API quota.
-9. **`final_response` may be `None`.** `Verifier.final_response` is
-   `str | None`; replying with `None` can fail. Provide a deterministic fallback.
-10. **Model is hardcoded.** No env override, capability check, quota tracking, or
-    fallback. Free model IDs are volatile.
-11. **Naming drift.** Folder is `orin`, bot says "Orin", design says "ORION",
-    `pyproject.toml` says `morrow`, and the description is a placeholder.
-    Reconcile deliberately, not accidentally.
-12. **Python 3.14 target.** The design discussion assumes 3.12+; 3.14 is very new
-    and may limit dependency compatibility. Confirm before lowering/raising.
-13. **No tests/lint/CI.** Changes are currently verified only by running the bot.
-14. **`.env` formatting.** Current file uses spaces around `=`; `dotenv` tolerates
-    it, but prefer standard `KEY=value`. Never print or commit the file.
-15. **`README.md` was historically empty.** Keep it and this file in sync with
-    actual behavior.
+- The integrations remain mock executors. There are no sessions, checkpoints,
+  history, real tools, quotas, or persistence.
+- The default model and backup are configurable. Free-tier model availability
+  can change and fallback is best-effort.
+- `orin` is the repository and package name. ORION remains the original design
+  name.
+- Python 3.14 remains the target. The installed LangChain stack emits Pydantic
+  V1 compatibility warnings during tests.
+- A Telegram reply rejected by Telegram cannot be delivered to the user. The
+  bot records a generic error without logging the request or credentials.
 
 ---
 
 ## 10. Conventions
 
 - **Package manager:** `uv` only. Add deps with `uv add`; commit `uv.lock`.
-- **Python style:** small pure functions in `src/nodes.py`, model/prompt setup in
-  `src/agents.py`, contracts in `src/schema.py`, wiring in `src/graph.py`.
+- **Python style:** small pure functions in `orchestration/nodes.py`, model/prompt setup in
+  `orchestration/agents.py`, contracts in `orchestration/schema.py`, wiring in `orchestration/graph.py`.
 - **State changes:** if you add/rename a `GraphState` key, update every writer,
   reader, graph edge, and the table in §5.2 of this file.
 - **Model access:** go through a single provider/model configuration point.
@@ -517,19 +376,10 @@ as part of an explicit task; do not silently "clean up" unrelated code.
    changed.
 7. **Report** — files changed, what was verified, known gaps, next step.
 
-### Highest-value next tasks (in order)
+### Next milestone
 
-1. Fix the `verification_result` key mismatch.
-2. Wire a deterministic retry loop (`verify_cycle` → re-execute or end) with a
-   hard retry cap.
-3. Route `other` to `other_task` (or delete it and document the behavior).
-4. Add error handling + a guaranteed string fallback for Telegram replies.
-5. Convert agent calls to async (`ainvoke`) or offload them.
-6. Add a minimal test suite for state mapping, routing, and verifier output.
-7. Add a Telegram user allowlist and validate required env vars at startup.
-8. Make model/provider configurable and add one fallback model.
-9. Introduce LangGraph checkpointing + SQLite session persistence.
-10. Only then start Phase 1: FastAPI gateway, tool registry, provider router.
+Implement Phase 1 in `TODO.md`, beginning with durable task state and one real,
+read-only GitHub workflow. Add idempotency before retrying external writes.
 
 ---
 

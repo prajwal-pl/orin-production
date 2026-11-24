@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from typing import Literal
+
+from pydantic import BaseModel
 
 
 class Classification(BaseModel):
@@ -9,7 +10,7 @@ class Classification(BaseModel):
 
 
 class Verifier(BaseModel):
+    status: Literal["pass", "retry", "fail"]
     feedback: str
-    retry_count: int
     verification_result: dict
     final_response: str | None

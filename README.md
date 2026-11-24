@@ -10,7 +10,7 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: early prototype.** Today this repository contains a working Telegram
+> **Status: tested Phase 0 prototype.** This repository contains a Telegram
 > + LangGraph demo with mock Gmail/GitHub actions. The runtime described below is
 > the target architecture, not the current feature set. See
 > [Current status](#current-status).
@@ -45,123 +45,48 @@ The design borrows the strongest ideas from two projects:
 
 ## Current status
 
-This is a **demo/prototype**, deliberately small:
+Phase 0 is a tested Telegram and LangGraph prototype. It classifies requests,
+routes Gmail and GitHub requests to mock executors, verifies results, and retries
+failed verification up to three total executions. Other requests receive an
+explicit unsupported response. Authorized Telegram user IDs are required before
+any model call. The model configuration supports an override and optional backup.
 
-```
-Telegram message
-      │
-      ▼
-LangGraph: classify ──▶ gmail (mock) ──┐
-              │        github (mock) ──┼──▶ verify ──▶ reply
-              └──────── other ─────────┘
-```
-
-**Working**
-
-- Telegram long-polling bot (`/start` + free-text messages).
-- LLM classifier that extracts intent, service, and arguments.
-- LangGraph routing to mock Gmail/GitHub task nodes.
-- LLM verifier that produces feedback and a final response.
-- Pydantic structured-output contracts.
-
-**Not built yet**
-
-- FastAPI gateway, streaming, sessions, persistence.
-- Memory, skills/learning, context/token budgeting.
-- Provider router and fallbacks.
-- Real Gmail/GitHub/Notion/filesystem/browser/MCP integrations.
-- Subagents, scheduler, approvals.
-- Next.js dashboard and Tauri desktop app.
-- Hub / Node distributed execution.
-
-The current code also has known prototype issues. They are documented in
-[`AGENTS.md`](AGENTS.md#9-known-issues-and-landmines) so contributors don't
-mistake them for intended behavior.
-
----
+There are no real Gmail or GitHub actions, persistence, memory, skills, budgets,
+FastAPI gateway, desktop UI, or Hub/Node deployment yet. See [TODO.md](TODO.md).
 
 ## Quickstart
 
-### Prerequisites
-
-- Python **3.14** (see `.python-version`)
-- [`uv`](https://docs.astral.sh/uv/)
-- An [OpenRouter](https://openrouter.ai/) API key
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-
-### 1. Install
-
-```bash
-uv sync
-```
-
-### 2. Configure
-
-Create `.env` in the repository root (it is gitignored):
+Install Python 3.14 and uv, then run `uv sync`. Create an ignored `.env` file:
 
 ```dotenv
-OPENROUTER_API_KEY=sk-or-...
 TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_ALLOWED_USER_IDS=123456789
+OPENROUTER_API_KEY=sk-or-...
+# ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
+# ORIN_FALLBACK_MODEL=openrouter:your-backup-model
 ```
 
-### 3. Run
-
-```bash
-uv run main.py
-```
-
-Open your bot in Telegram, send `/start`, then try a request such as:
-
-```text
-Summarize my unread GitHub notifications and draft a reply to the important ones.
-```
-
-At this stage the Gmail/GitHub actions are **mocked** — the graph classifies,
-routes, and verifies, but does not call real services.
-
-### 4. Verify without network
-
-```bash
-uv run python - <<'PY'
-import pathlib
-for p in pathlib.Path(".").glob("**/*.py"):
-    if ".venv" in str(p):
-        continue
-    compile(p.read_text(), str(p), "exec")
-    print("OK", p)
-PY
-```
-
----
+Use comma-separated numeric Telegram user IDs for multiple users. An OpenRouter
+key is required when either configured model uses OpenRouter. The default model
+is `openrouter:nvidia/nemotron-3.5-lightning:free`. Start the bot with
+`uv run main.py` and run credential-free tests with `uv run python -m pytest -q`.
+Tests simulate Telegram messages and model calls without live credentials.
 
 ## How it works today
 
 | File | Responsibility |
 |---|---|
-| `main.py` | Telegram application lifecycle and handlers |
-| `src/bot.py` | Converts a Telegram update into graph state and invokes the graph |
-| `src/graph.py` | LangGraph nodes and edges |
-| `src/nodes.py` | `GraphState` contract, classification, mock executors, verification |
-| `src/agents.py` | Classifier and verifier configuration |
-| `src/schema.py` | `Classification` and `Verifier` Pydantic models |
+| `main.py` | Startup validation and Telegram handlers |
+| `orchestration/bot.py` | Authorization, graph calls, and replies |
+| `orchestration/graph.py` | Routing and bounded retries |
+| `orchestration/nodes.py` | Graph state, async nodes, mock executors |
+| `orchestration/agents.py` | Central model configuration and structured calls |
+| `orchestration/schema.py` | Structured output contracts |
 
-The graph state currently carries the user request, classified intent/service,
-arguments, execution result/status, verification output, retry count, and final
-response. See [`AGENTS.md`](AGENTS.md#52-state-contract-graphstate-in-srcnodespy)
-for the full contract.
-
-```mermaid
-flowchart LR
-    T[Telegram] --> B[src/bot.py]
-    B --> G[LangGraph]
-    G --> C[classify]
-    C -->|gmail| GM[mock gmail]
-    C -->|github| GH[mock github]
-    C -->|other| V[verify]
-    GM --> V
-    GH --> V
-    V --> R[reply]
-```
+The graph classifies, executes a mock Gmail or GitHub action, and verifies the
+mock result. Recoverable verification failure re-executes the same mock node up to three total
+attempts. The `other` route ends with an unsupported response. The runtime owns
+the retry counter. Model and reply failures produce a generic user-facing reply.
 
 ---
 
@@ -260,7 +185,7 @@ experience.
 - Treat web pages, documents, and MCP output as **data**, never as instructions.
 - Secrets belong in the OS credential store, not plaintext configuration.
 - Never commit `.env` or bot tokens.
-- The current demo has **no user allowlist**; do not expose it publicly.
+- Set `TELEGRAM_ALLOWED_USER_IDS` before starting the bot.
 
 ---
 
@@ -276,9 +201,7 @@ experience.
 
 ## Naming
 
-The project appears as **Orin** (repository/bot), **ORION** (original design
-discussion), and `morrow` (legacy `pyproject.toml` name). They refer to the same
-project; naming will be reconciled deliberately rather than piecemeal.
+The repository, bot, and package use **Orin**. **ORION** is the name from the original design discussion.
 
 ---
 

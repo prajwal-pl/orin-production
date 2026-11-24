@@ -1,38 +1,34 @@
-from typing_extensions import TypedDict
+"""Graph state and prototype task nodes."""
+
+import json
+import logging
 from typing import Literal
-from orchestration.agents import classifier, verifier
+from typing_extensions import TypedDict
+
+from orchestration.agents import invoke_structured
+
+logger = logging.getLogger(__name__)
+MAX_ATTEMPTS = 3
 
 
 class GraphState(TypedDict):
     user_id: str
     message: str
-
     intent: str
     service: Literal["gmail", "github", "other"]
     arguments: dict
-
-    # Execution
     execution_result: dict
     execution_status: str
-
-    # Verification
     verification_result: dict
+    verification_status: Literal["pending", "pass", "retry", "fail"]
     feedback: str
     retry_count: int
-
-    # Final response
     final_response: str
 
 
-def classification_agent(state: GraphState):
-    result = classifier.invoke(
-        {"messages": [{"role": "user", "content": state["message"]}]},
-    )
-
-    classification = result["structured_response"]
-
+async def classification_agent(state: GraphState):
+    classification = await invoke_structured("classifier", state["message"])
     service_mapping = {"gmail-task": "gmail", "github-task": "github", "other": "other"}
-
     return {
         "intent": classification.intent,
         "service": service_mapping[classification.type],
@@ -40,52 +36,51 @@ def classification_agent(state: GraphState):
     }
 
 
-def verification_agent(state: GraphState):
-    result = verifier.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"execution_result: {state["execution_result"]}, execution_status: {state["execution_status"]}, state: {state}",
-                }
-            ]
-        }
-    )
-
-    verification = result["structured_response"]
-
+async def verification_agent(state: GraphState):
+    # Send only the data needed for verification. Credentials and user IDs stay out of the prompt.
+    details = {
+        "request": state["message"],
+        "service": state["service"],
+        "intent": state["intent"],
+        "execution_result": state["execution_result"],
+        "execution_status": state["execution_status"],
+    }
+    verification = await invoke_structured("verifier", json.dumps(details))
+    failed = verification.status != "pass"
+    retry_count = state["retry_count"] + int(failed)
+    terminal_failure = verification.status == "fail" or failed and retry_count >= MAX_ATTEMPTS
+    response = (verification.final_response or "").strip()
+    if terminal_failure:
+        response = "I could not verify the mock task. Please try again later."
+    elif not response:
+        response = (
+            "The mock task finished, but I could not prepare a detailed response."
+            if not failed else "I could not verify the mock task."
+        )
     return {
         "feedback": verification.feedback,
-        "retry_count": verification.retry_count,
-        "verification_results": verification.verification_result,
-        "final_response": verification.final_response,
+        "retry_count": retry_count,
+        "verification_result": verification.verification_result,
+        "verification_status": verification.status,
+        "execution_status": "failed" if terminal_failure else state["execution_status"],
+        "final_response": response,
     }
 
 
 def mock_github_task(state: GraphState):
-    print(f"Mock github task running: {state['arguments']}")
-
-    return {
-        "execution_status": "completed",
-        "execution_result": {"message": "github task executed"},
-    }
+    logger.info("Mock GitHub task executed")
+    return {"execution_status": "completed", "execution_result": {"message": "GitHub mock task executed. No GitHub action was performed."}}
 
 
 def mock_gmail_task(state: GraphState):
-    print(f"Mock gmail task running: {state['arguments']}")
-
-    return {
-        "execution_status": "completed",
-        "execution_result": {"message": "gmail task executed"},
-    }
+    logger.info("Mock Gmail task executed")
+    return {"execution_status": "completed", "execution_result": {"message": "Gmail mock task executed. No email action was performed."}}
 
 
 def other_task(state: GraphState):
-    print(f"Other task running: {state['arguments']}")
-
     return {
-        "execution_status": "completed",
-        "execution_result": {"message": "Other task executed"},
+        "execution_status": "unsupported",
+        "final_response": "I can currently demonstrate Gmail and GitHub requests with mock actions only.",
     }
 
 
@@ -93,13 +88,7 @@ def route_task(state: GraphState):
     return state["service"]
 
 
-def verify_cycle(state: GraphState) -> GraphState:
-    # If verification failed and we've exceeded max retries, mark as failed
-    if state.get("verification_result") == "fail" and state.get("retry_count", 0) >= 3:
-        return {
-            **state,
-            "execution_status": "failed",
-            "feedback": "Max retries exceeded",
-        }
-    # Otherwise keep the state unchanged
-    return state
+def verify_cycle(state: GraphState) -> Literal["github", "gmail", "end"]:
+    if state["verification_status"] == "retry" and state["retry_count"] < MAX_ATTEMPTS:
+        return state["service"]
+    return "end"
