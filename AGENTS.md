@@ -55,79 +55,79 @@ Everything in the architecture follows from that sentence:
 
 ## 3. Current state
 
-Phase 0 is a tested Telegram and LangGraph prototype. It classifies requests,
-runs mock Gmail or GitHub nodes, verifies their results, and retries failed
-verification at most three total executions. Other requests get an explicit
-unsupported response. The bot checks a Telegram user allowlist before invoking a
-model. Calls are async, with a configured primary model and optional backup.
-Credential-free tests cover routing, retry limits, authorization, and replies.
+Phase 1 provides a shared task runtime used by Telegram, CLI, and a localhost
+FastAPI gateway. Tasks, sessions, messages, events, and capability executions are
+stored in SQLite. LangGraph checkpoints live in a companion SQLite file. A
+request mentioning GitHub notifications uses a real GET workflow that groups
+unread notifications and prioritizes attention items. Other GitHub and Gmail
+requests still use the Phase 0 mock graph. Credential-free tests cover channel
+entry points, API authorization, notification fetching, and checkpoint recovery.
 
-Real integrations, durable state, memory, skills, budgets, FastAPI, and the
-Hub/Node architecture remain future work. Mock actions do not access accounts.
+Memory, skills, budgets, real Gmail actions, and the Hub/Node design remain
+future work. The GitHub notifications endpoint rejects fine-grained tokens, so
+the first workflow uses a classic token with the `notifications` scope. Runtime
+code makes GET requests only and gates the capability by owner ID.
 
 ## 4. Repository map
 
 | File | Responsibility |
 |---|---|
-| `main.py` | Startup validation and Telegram handlers |
-| `orchestration/bot.py` | Authorization, graph invocation, Telegram replies |
-| `orchestration/graph.py` | LangGraph topology and retry edges |
-| `orchestration/nodes.py` | State contract, async nodes, mock executors |
-| `orchestration/agents.py` | Model configuration and structured calls |
-| `orchestration/schema.py` | Classification and verification schemas |
-| `tests/test_phase0.py` | Credential-free unit and adapter tests |
+| `main.py` | Telegram startup and handlers |
+| `orchestration/bot.py` | Telegram authorization and task adapter |
+| `orchestration/cli.py` | Local CLI |
+| `orchestration/api.py` | Authenticated task and session API, SSE stream |
+| `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
+| `orchestration/store.py` | SQLite schema migrations and records |
+| `orchestration/github.py` | Notification capability and summary |
+| `orchestration/graph.py` | Phase 0 mock graph topology |
+| `orchestration/nodes.py` | Prototype graph state and nodes |
+| `orchestration/agents.py` | Model configuration and backend contract |
+| `orchestration/schema.py` | Classifier and verifier schemas |
+| `tests/` | Credential-free workflow and adapter tests |
 | `TODO.md` | Phase checklists and completion criteria |
 
-## 5. How the prototype works today
+## 5. How execution works
 
-Authorized Telegram text enters the graph. The classifier routes Gmail and
-GitHub requests to mock executors and other requests to an unsupported response.
-The verifier runs after a mock executor. Recoverable verification failure repeats that mock
-node, at most three total executions. Real side-effecting tools need idempotency
-and approval controls before they can use this retry behavior.
+The runtime creates a task with an owner, session ID, request, kind, status, and
+optional idempotency key. A task moves from pending to running and then completed
+or paused. Pending or paused tasks can be cancelled. Another invocation resumes
+a paused task from its LangGraph checkpoint. A running task whose worker process
+has exited can be recovered. Checkpoints use the task ID as the thread ID.
+Task records and checkpoints are in separate SQLite files to avoid writer locks.
 
-### 5.1 State contract (`GraphState` in `orchestration/nodes.py`)
+Telegram is authorized before task submission. Requests containing GitHub and
+notifications use the real notification workflow. Other requests use the Phase 0
+classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
+message IDs reuse a task. CLI and API call the same `Runtime` methods. The API
+requires a bearer token and a configured owner ID on every route.
 
-| Key | Type | Meaning |
-|---|---|---|
-| `user_id` | `str` | Telegram user ID, omitted from verifier prompt |
-| `message` | `str` | User request |
-| `intent` | `str` | Classified intent |
-| `service` | `Literal["gmail","github","other"]` | Route |
-| `arguments` | `dict` | Classified arguments |
-| `execution_result` | `dict` | Mock result |
-| `execution_status` | `str` | Pending, completed, unsupported, or failed |
-| `verification_result` | `dict` | Verifier details |
-| `verification_status` | `Literal["pending","pass","retry","fail"]` | Retry decision |
-| `feedback` | `str` | Verifier feedback |
-| `retry_count` | `int` | Runtime-counted failed verification attempts |
-| `final_response` | `str` | Telegram reply |
+### 5.1 Prototype graph state
+
+`GraphState` in `orchestration/nodes.py` contains `user_id`, `message`, `intent`,
+`service`, `arguments`, `execution_result`, `execution_status`,
+`verification_result`, `verification_status`, `feedback`, `retry_count`, and
+`final_response`. The notification graph has `task_id`, `request`,
+`notifications`, and `final_response`. The runtime owns session, task, and event
+records in `orchestration/store.py`.
 
 ### 5.2 Model configuration
 
 `ORIN_MODEL` selects the primary model and defaults to
 `openrouter:nvidia/nemotron-3.5-lightning:free`. `ORIN_FALLBACK_MODEL` optionally
-selects one backup. A failed call or malformed structured response tries the
-backup once. No token budget, quota tracking, or general provider router exists.
+selects a backup. The backend contract normalizes structured response, model
+name, observed token usage, and known capabilities. `openrouter:` and `ollama:`
+model identifiers are supported by the installed LangChain integrations. No
+per-model health tracking or budget policy exists yet.
 
-## 6. Running the prototype
+## 6. Running the foundation
 
 Python 3.14 and uv are specified in `.python-version` and `pyproject.toml`.
-Run `uv sync` to install locked dependencies. Set these values in the ignored
-`.env` file or environment:
-
-```dotenv
-TELEGRAM_BOT_TOKEN=123456:ABC...
-TELEGRAM_ALLOWED_USER_IDS=123456789
-OPENROUTER_API_KEY=sk-or-...
-# ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
-# ORIN_FALLBACK_MODEL=openrouter:your-backup-model
-```
-
-Use comma-separated numeric IDs for multiple users. An OpenRouter key is
-required when either model uses OpenRouter. Startup validates configuration.
-Run `uv run main.py` and test with `uv run python -m pytest -q`. Tests use mocked
-models and Telegram messages.
+Run `uv sync`. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, and
+`OPENROUTER_API_KEY` for Telegram with the default model. Set `GITHUB_TOKEN`
+and `ORIN_GITHUB_ALLOWED_USERS` for the GitHub notifications capability. The
+GitHub token must be a classic personal access token with `notifications` scope.
+Set `ORIN_API_TOKEN` for the local API. See README for complete commands and
+configuration. Use `uv run python -m pytest -q` for credential-free tests.
 
 ---
 
@@ -281,7 +281,7 @@ write scopes independently.
 | Phase | Scope | Status |
 |---|---|---|
 | **0. Prototype** | Telegram channel, LangGraph classify/verify, mock executors | Complete, credential-free tests pass |
-| **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, tool registry, SQLite, sessions, streaming | Not started |
+| **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, capability registry, SQLite, sessions, streaming | Implemented; live credentials unverified |
 | **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Not started |
 | **3. Adaptive learning** | Episodic/semantic memory, skill creation/versioning, evaluator, rollback | Not started |
 | **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals | Not started |
@@ -304,16 +304,17 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ## 9. Current limits and decisions
 
-- The integrations remain mock executors. There are no sessions, checkpoints,
-  history, real tools, quotas, or persistence.
-- The default model and backup are configurable. Free-tier model availability
-  can change and fallback is best-effort.
-- `orin` is the repository and package name. ORION remains the original design
-  name.
+- The GitHub workflow uses deterministic prioritization and a read-only GET
+  operation. The required classic token has broader permissions than this code
+  uses because GitHub's endpoint rejects fine-grained tokens.
+- Other GitHub and Gmail requests remain mock executions.
+- The API supports a single configured owner for its bearer token and must be
+  bound to localhost. Cancellation applies to pending and paused tasks.
+- There is no memory, learning loop, quota tracking, or distributed execution.
 - Python 3.14 remains the target. The installed LangChain stack emits Pydantic
   V1 compatibility warnings during tests.
-- A Telegram reply rejected by Telegram cannot be delivered to the user. The
-  bot records a generic error without logging the request or credentials.
+- A Telegram reply rejected by Telegram cannot be delivered. The bot logs a
+  generic error without logging the request or credentials.
 
 ---
 
@@ -378,8 +379,8 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Implement Phase 1 in `TODO.md`, beginning with durable task state and one real,
-read-only GitHub workflow. Add idempotency before retrying external writes.
+Implement Phase 2 in `TODO.md`, beginning with context budgets and measured
+model routing. Real external writes still need idempotency and approval controls.
 
 ---
 

@@ -9,8 +9,9 @@ from orchestration.schema import Classification, Verifier
 
 
 @pytest.fixture
-def telegram_update(monkeypatch):
+def telegram_update(monkeypatch, tmp_path):
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "123")
+    monkeypatch.setenv("ORIN_DATABASE_PATH", str(tmp_path / "tasks.db"))
     message = SimpleNamespace(text="Check GitHub", reply_text=AsyncMock())
     return SimpleNamespace(effective_user=SimpleNamespace(id=123), message=message)
 
@@ -79,7 +80,7 @@ async def test_provider_failure_gets_user_message(monkeypatch, telegram_update):
 
     monkeypatch.setattr(nodes, "invoke_structured", fail_model)
     await bot.telegram_bot_message(telegram_update, None)
-    assert telegram_update.message.reply_text.await_args.args == (bot.PROVIDER_ERROR_REPLY,)
+    assert "is paused" in telegram_update.message.reply_text.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -158,7 +159,7 @@ def test_application_registers_handlers(monkeypatch):
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "123")
     monkeypatch.setenv("OPENROUTER_API_KEY", "placeholder")
     application = main.build_application(main.validate_configuration())
-    assert len(application.handlers[0]) == 2
+    assert len(application.handlers[0]) == 4
 
 
 @pytest.mark.asyncio

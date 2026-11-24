@@ -10,10 +10,9 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: tested Phase 0 prototype.** This repository contains a Telegram
-> + LangGraph demo with mock Gmail/GitHub actions. The runtime described below is
-> the target architecture, not the current feature set. See
-> [Current status](#current-status).
+> **Status: Phase 1 foundation.** Telegram, CLI, and a local API share a SQLite-backed
+> task runtime. GitHub notifications use a real read-only API call. Gmail and
+> other GitHub requests still use mock actions. See [Current status](#current-status).
 
 ---
 
@@ -45,48 +44,90 @@ The design borrows the strongest ideas from two projects:
 
 ## Current status
 
-Phase 0 is a tested Telegram and LangGraph prototype. It classifies requests,
-routes Gmail and GitHub requests to mock executors, verifies results, and retries
-failed verification up to three total executions. Other requests receive an
-explicit unsupported response. Authorized Telegram user IDs are required before
-any model call. The model configuration supports an override and optional backup.
+Phase 1 includes SQLite sessions, messages, tasks, events, execution records,
+and LangGraph checkpoints. Telegram, a local CLI, and an authenticated localhost
+API submit to the same runtime. A request containing both “GitHub” and
+“notifications” fetches unread notifications, groups them by repository, and
+prioritizes mentions, assignments, and review requests with source links. This
+summary uses deterministic rules. Other GitHub and Gmail requests still run the
+Phase 0 mock graph.
 
-There are no real Gmail or GitHub actions, persistence, memory, skills, budgets,
-FastAPI gateway, desktop UI, or Hub/Node deployment yet. See [TODO.md](TODO.md).
+The GitHub notifications endpoint currently requires a classic personal access
+token with the `notifications` scope. GitHub does not support fine-grained tokens
+for this endpoint. Orin makes GET requests only and limits this capability to
+users named in `ORIN_GITHUB_ALLOWED_USERS`. The token itself has broader GitHub
+permissions than this runtime uses. Keep it in the environment or ignored `.env`
+file. [GitHub notifications API](https://docs.github.com/en/rest/activity/notifications)
 
-## Quickstart
+### Setup
 
-Install Python 3.14 and uv, then run `uv sync`. Create an ignored `.env` file:
+Install Python 3.14 and uv, then run `uv sync`. Set values in the ignored `.env`
+file or your environment:
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=123456:ABC...
 TELEGRAM_ALLOWED_USER_IDS=123456789
 OPENROUTER_API_KEY=sk-or-...
+GITHUB_TOKEN=your-classic-token-with-notifications-scope
+ORIN_GITHUB_ALLOWED_USERS=123456789,local
+ORIN_API_TOKEN=choose-a-long-random-token
+ORIN_API_USER=local
 # ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
-# ORIN_FALLBACK_MODEL=openrouter:your-backup-model
+# ORIN_FALLBACK_MODEL=ollama:llama3.2
+# ORIN_DATABASE_PATH=/path/to/orin.db
 ```
 
-Use comma-separated numeric Telegram user IDs for multiple users. An OpenRouter
-key is required when either configured model uses OpenRouter. The default model
-is `openrouter:nvidia/nemotron-3.5-lightning:free`. Start the bot with
-`uv run main.py` and run credential-free tests with `uv run python -m pytest -q`.
-Tests simulate Telegram messages and model calls without live credentials.
+Set `ORIN_GITHUB_ALLOWED_USERS` to the Telegram ID or CLI/API owner that may use
+the GitHub account. It defaults to `local` when unset. The API token grants access
+only to `ORIN_API_USER`, which defaults to `local`. The CLI owner is `local` by
+default and can be changed with `ORIN_CLI_USER`. The default database is
+`~/.orion/database/orin.db`; checkpoints are in a companion SQLite file.
+
+### Run
+
+```bash
+uv run main.py
+uv run python -m orchestration.cli "Summarize my GitHub notifications"
+uv run uvicorn orchestration.api:app --host 127.0.0.1
+```
+
+The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
+`/start`, `/status TASK_ID`, and `/resume TASK_ID`. Submit an API task with `POST /tasks`, run or
+resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
+stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
+`GET /tasks`, `GET /sessions`, and `GET /sessions/{id}/messages`. Send
+`Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
+headers. The API token is required for every route. Bind the server to localhost.
+
+A task paused by a provider or capability failure can be resumed by ID. Work
+already checkpointed by LangGraph is reused. An interrupted process leaves a
+running task recoverable once its worker process is gone. Cancellation currently
+applies to pending and paused tasks. Duplicate Telegram message IDs and API
+idempotency keys reuse the original task.
+
+### Verify
+
+```bash
+uv run python -m pytest -q
+```
+
+The suite simulates Telegram, HTTP, CLI, GitHub API responses, and process
+interruption without live credentials. A live GitHub or Telegram call requires
+your own credentials and was not part of the automated test run.
 
 ## How it works today
 
 | File | Responsibility |
 |---|---|
-| `main.py` | Startup validation and Telegram handlers |
-| `orchestration/bot.py` | Authorization, graph calls, and replies |
-| `orchestration/graph.py` | Routing and bounded retries |
-| `orchestration/nodes.py` | Graph state, async nodes, mock executors |
-| `orchestration/agents.py` | Central model configuration and structured calls |
-| `orchestration/schema.py` | Structured output contracts |
-
-The graph classifies, executes a mock Gmail or GitHub action, and verifies the
-mock result. Recoverable verification failure re-executes the same mock node up to three total
-attempts. The `other` route ends with an unsupported response. The runtime owns
-the retry counter. Model and reply failures produce a generic user-facing reply.
+| `main.py` | Telegram startup and handlers |
+| `orchestration/bot.py` | Telegram authorization and shared-runtime adapter |
+| `orchestration/cli.py` | Local CLI |
+| `orchestration/api.py` | Authenticated local HTTP and event stream |
+| `orchestration/runtime.py` | Durable execution and checkpoint recovery |
+| `orchestration/store.py` | Versioned SQLite schema and task records |
+| `orchestration/github.py` | Read-only GitHub notification fetch and summary |
+| `orchestration/graph.py` | Phase 0 mock graph |
+| `orchestration/agents.py` | Model backend contract and structured calls |
 
 ---
 
@@ -152,7 +193,7 @@ approval (when needed) → versioned skill → rollback available
 | Phase | Focus |
 |---|---|
 | **0. Prototype** ✅ | Telegram + LangGraph classify/verify demo |
-| **1. Foundation** | FastAPI, durable runtime, provider abstraction, tool registry, SQLite, sessions, streaming |
+| **1. Foundation** ✅ | Local API, shared runtime, provider contract, capability registry, SQLite, sessions, event streaming |
 | **2. Context engineering** | Token budgeting, compression, retrieval, checkpoints, fallback routing |
 | **3. Adaptive learning** | Episodic/semantic memory, skill creation/versioning, evaluator, rollback |
 | **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals |

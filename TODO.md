@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phase 0. The Telegram prototype classifies requests, routes to mock Gmail and GitHub executors, and asks a model to produce a reply. Checked items describe implemented capabilities. The remaining items are implementation work.
+Orin has completed Phases 0 and 1. Telegram, CLI, and a local API share a SQLite-backed task runtime. GitHub notifications use a real read-only API operation. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -21,15 +21,15 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 ## Phase 1 — Build the runtime foundation
 
-- [ ] Define reusable task, step, session, capability, and event contracts. Route Telegram and a minimal local CLI through the same runtime.
-- [ ] Add versioned SQLite migrations for sessions, messages, tasks, steps, checkpoints, and execution records.
-- [ ] Persist LangGraph checkpoints with stable task and session IDs. Define task transitions, cancellation, recovery, and duplicate-update handling.
-- [ ] Define a capability registry with typed inputs and outputs, permission scopes, timeouts, and consistent error handling. Record tool outcomes in the execution history.
-- [ ] Build the first real workflow. Fetch unread GitHub notifications with read-only credentials, group them by repository, and summarize items that need attention with source links.
-- [ ] Store integration credentials through environment variables or the OS credential store. Keep secrets out of execution history and model context.
-- [ ] Introduce a provider adapter contract that normalizes structured responses, capability information, usage, and errors. Migrate the prototype provider configuration into it and support a second backend.
-- [ ] Add a localhost FastAPI gateway with authenticated session and task operations, status retrieval, and a streaming event endpoint that supports reconnecting.
-- [ ] Test persistence and recovery by interrupting a run after its GitHub fetch has been checkpointed. Verify that resuming reuses the saved result and preserves task ownership.
+- [x] Define reusable task, step, session, capability, and event contracts. Route Telegram and a minimal local CLI through the same runtime.
+- [x] Add versioned SQLite migrations for sessions, messages, tasks, steps, checkpoints, and execution records.
+- [x] Persist LangGraph checkpoints with stable task and session IDs. Define task transitions, cancellation, recovery, and duplicate-update handling.
+- [x] Define a capability registry with typed inputs and outputs, permission scopes, timeouts, and consistent error handling. Record tool outcomes in the execution history.
+- [x] Build the first real workflow. Fetch unread GitHub notifications with GET requests and a classic token with the `notifications` scope, group by repository, and highlight items needing attention with source links. GitHub does not support fine-grained tokens for this endpoint.
+- [x] Store integration credentials through environment variables or the OS credential store. Keep secrets out of execution history and model context.
+- [x] Introduce a provider adapter contract that normalizes structured responses, capability information, usage, and errors. Migrate the prototype provider configuration into it and support a second backend.
+- [x] Add a localhost FastAPI gateway with authenticated session and task operations, status retrieval, and a streaming event endpoint that supports reconnecting.
+- [x] Test persistence and recovery by interrupting a run after its GitHub fetch has been checkpointed. Verify that resuming reuses the saved result and preserves task ownership.
 
 **Done when** an authorized user can run the GitHub workflow through Telegram, inspect its saved status, and resume it after a process restart.
 

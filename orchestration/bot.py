@@ -8,6 +8,7 @@ from telegram.ext import ContextTypes
 
 from orchestration.graph import graph
 from orchestration.nodes import GraphState
+from orchestration.runtime import Runtime
 
 logger = logging.getLogger(__name__)
 PROVIDER_ERROR_REPLY = "I could not process that request right now. Please try again later."
@@ -45,24 +46,52 @@ async def telegram_bot_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not update.message.text:
         return
 
-    initial_state: GraphState = {
-        "user_id": str(update.effective_user.id),
-        "message": update.message.text,
-        "intent": "",
-        "service": "other",
-        "arguments": {},
-        "execution_result": {},
-        "execution_status": "pending",
-        "feedback": "",
-        "verification_result": {},
-        "verification_status": "pending",
-        "retry_count": 0,
-        "final_response": "",
-    }
     try:
-        result = await graph.ainvoke(initial_state)
-        reply = result.get("final_response") or PROVIDER_ERROR_REPLY
+        owner = str(update.effective_user.id)
+        service = Runtime()
+        session_id = f"telegram:{owner}"
+        message_id = getattr(update.message, "message_id", None)
+        key = f"telegram:{owner}:{message_id}" if message_id is not None else None
+        task = await service.submit(owner, session_id, update.message.text, key)
+        result = await service.run(owner, task["id"])
+        reply = result.get("result") or f"Task {task['id']} is paused. Send /status {task['id']} to inspect it."
     except Exception:
         logger.error("Telegram request failed")
         reply = PROVIDER_ERROR_REPLY
     await safe_reply(update.message, reply)
+
+
+async def telegram_task_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    if not context.args:
+        await safe_reply(update.message, "Use /status TASK_ID")
+        return
+    task = Runtime().store.get_task(context.args[0], str(update.effective_user.id))
+    if task is None:
+        await safe_reply(update.message, "Task not found.")
+        return
+    await safe_reply(update.message, task["result"] or f"Task is {task['status']}.")
+
+
+async def telegram_resume_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    if not context.args:
+        await safe_reply(update.message, "Use /resume TASK_ID")
+        return
+    try:
+        task = await Runtime().run(str(update.effective_user.id), context.args[0])
+    except KeyError:
+        await safe_reply(update.message, "Task not found.")
+        return
+    except PermissionError:
+        await safe_reply(update.message, "This capability is not enabled for your account.")
+        return
+    await safe_reply(update.message, task["result"] or f"Task is {task['status']}.")
