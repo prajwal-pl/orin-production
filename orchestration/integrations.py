@@ -9,6 +9,8 @@ from urllib.parse import quote, urlparse
 
 import httpx
 
+from orchestration.google_oauth import has_refresh_token, refreshed_access_token
+
 
 @dataclass(frozen=True)
 class Evidence:
@@ -52,8 +54,10 @@ class MissingCredential(RuntimeError):
 
 
 def connected_sources(owner: str) -> list[str]:
-    return [key for key, source in SOURCES.items() if os.getenv(source.token_env, "").strip()
-            and owner in allowed_users(source)]
+    return [key for key, source in SOURCES.items()
+            if owner in allowed_users(source) and
+            (os.getenv(source.token_env, "").strip() or
+             (key != "github" and has_refresh_token(owner, key)))]
 
 
 def allowed_users(source: SourceSpec) -> set[str]:
@@ -64,13 +68,6 @@ def allowed_users(source: SourceSpec) -> set[str]:
 def authorize_source(owner: str, key: str) -> None:
     if owner not in allowed_users(SOURCES[key]):
         raise PermissionError(f"{key} read access is not enabled for this user")
-
-
-def source_token(key: str) -> str:
-    token = os.getenv(SOURCES[key].token_env, "").strip()
-    if not token:
-        raise MissingCredential(f"{key} is not connected")
-    return token
 
 
 def _safe(value: object, limit: int = 300) -> str:
@@ -180,9 +177,13 @@ FETCHERS: dict[str, Callable[[str], Awaitable[list[Evidence]]]] = {
 
 async def fetch_source(key: str, owner: str) -> list[dict]:
     authorize_source(owner, key)
-    token = source_token(key)
     if key not in FETCHERS:
         raise ValueError("GitHub is handled by the existing notification adapter")
+    token = os.getenv(SOURCES[key].token_env, "").strip()
+    if not token:
+        if not has_refresh_token(owner, key):
+            raise MissingCredential(f"{key} is not connected")
+        token = await refreshed_access_token(owner, key)
     return [asdict(item) for item in await FETCHERS[key](token)]
 
 

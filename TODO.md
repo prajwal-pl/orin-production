@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 through 3 and added a cross-source read foundation. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications are live-tested; Gmail headers, Drive metadata, and Calendar events have read-only adapters tested with mocked HTTP. A daily briefing combines configured sources with shared context, memory, budgets, and versioned ordering skills. Durable Google connections still require a consent and refresh flow, plus live verification. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
+Orin has completed Phases 0 through 3 and added a cross-source read foundation. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. A daily briefing combines configured sources with shared context, memory, budgets, and versioned ordering skills. Google desktop OAuth with per-source scopes, OS credential storage, and refresh is implemented. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -64,7 +64,7 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 ## Phase 4 — Add controlled autonomy
 
-- [ ] Implement Google desktop OAuth with PKCE, independent least-privilege grants for Gmail, Drive, and Calendar, refresh-token storage in the OS credential store, revocation, and live account checks.
+- [x] Implement Google desktop OAuth with PKCE, independent least-privilege grants for Gmail, Drive, and Calendar, refresh-token storage in the OS credential store, revocation, and live account checks.
 - [ ] Add paginated and incremental read sync: Gmail history IDs, Drive change tokens, Calendar sync tokens, and full-resync recovery on expired cursors. Keep each source's data and provenance owner-scoped.
 - [ ] Build owner-scoped cross-source search with citations, account identity, freshness, and metadata/content separation. Evaluate retrieval across at least two providers and local files.
 - [ ] Enforce policy at the capability boundary. Scope filesystem access to approved roots and account credentials to specific read or write operations.

@@ -61,6 +61,7 @@ async def test_google_adapters_use_read_only_metadata_requests():
 def integration_env(monkeypatch, tmp_path):
     path = tmp_path / "orin.db"
     monkeypatch.setenv("ORIN_DATABASE_PATH", str(path))
+    monkeypatch.setenv("ORIN_GOOGLE_CLIENT_FILE", str(tmp_path / "no-google-client.json"))
     monkeypatch.setenv("ORIN_GITHUB_ALLOWED_USERS", "local")
     for key in ("GMAIL", "DRIVE", "CALENDAR"):
         monkeypatch.setenv(f"ORIN_{key}_ALLOWED_USERS", "local")

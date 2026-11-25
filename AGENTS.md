@@ -63,7 +63,8 @@ unread notifications and prioritizes attention items. Gmail inbox headers,
 Drive file metadata, and Calendar events use separate read-only Google adapters;
 daily briefings combine available sources and report missing or failed ones.
 Items rotate across sources to avoid one busy inbox hiding the rest.
-Google adapters are tested with mocked HTTP and have not been live-authorized.
+Google adapters have mocked HTTP tests and were live-authorized and read on
+2026-11-25.
 Other GitHub and Gmail actions still use the Phase 0 mock graph. Credential-free tests cover channel
 entry points, API authorization, notification fetching, and checkpoint recovery.
 
@@ -89,8 +90,8 @@ inspection, correction, export, and deletion, plus skill inspection, activation,
 and usage metrics. The registry also holds a daily-briefing source-order skill;
 an explicit correction such as “calendar first” can propose a new version.
 
-General skill synthesis, neural embeddings, Google OAuth/refresh, Google live
-verification, external writes, and the Hub/Node design remain future work. The
+General skill synthesis, neural embeddings, external writes, and the Hub/Node
+design remain future work. The
 GitHub notifications endpoint rejects fine-grained tokens, so
 the first workflow uses a classic token with the `notifications` scope. Runtime
 code makes GET requests only and gates the capability by owner ID.
@@ -107,6 +108,7 @@ code makes GET requests only and gates the capability by owner ID.
 | `orchestration/store.py` | SQLite schema migrations and records |
 | `orchestration/github.py` | Notification capability and summary |
 | `orchestration/integrations.py` | Read-only evidence contract and Google adapters |
+| `orchestration/google_oauth.py` | Desktop OAuth, OS credential storage, refresh, disconnect |
 | `orchestration/graph.py` | Phase 0 mock graph topology |
 | `orchestration/nodes.py` | Prototype graph state and nodes |
 | `orchestration/agents.py` | Model configuration and backend contract |
@@ -174,10 +176,10 @@ configuration. Use `uv run python -m pytest -q` for credential-free tests and
 `uv run python -m evaluation.benchmark` for the scripted comparison. A small
 local Ollama model can be set as `ORIN_FALLBACK_MODEL`. Run
 `uv run python -m evaluation.learning` for the credential-free skill adoption
-and rollback demonstration. Google read adapters use separate short-lived
-`ORIN_GMAIL_ACCESS_TOKEN`, `ORIN_DRIVE_ACCESS_TOKEN`, and
-`ORIN_CALENDAR_ACCESS_TOKEN` plus matching `ORIN_*_ALLOWED_USERS` grants. See
-`INTEGRATIONS.md` for scopes and next OAuth work.
+and rollback demonstration. Google read adapters use independent desktop OAuth
+grants with refresh tokens in the OS credential store and matching
+`ORIN_*_ALLOWED_USERS` grants. Short-lived environment access tokens remain
+overrides. See `README.md` and `INTEGRATIONS.md` for setup and scopes.
 
 ---
 
@@ -358,11 +360,11 @@ Do not start with 15 integrations, six agents, and three frontends.
 - The GitHub workflow uses deterministic prioritization and a read-only GET
   operation. The required classic token has broader permissions than this code
   uses because GitHub's endpoint rejects fine-grained tokens.
-- Gmail inbox headers, Drive metadata, and Calendar event reads have no live
-  account verification yet. Other GitHub/Gmail actions remain mock executions.
-- Google access tokens are manually supplied and expire; OAuth consent, refresh,
-  and OS credential storage remain next steps. The capability API reports
-  configuration, not successful provider authentication.
+- Gmail inbox headers, Drive metadata, and Calendar event reads passed live
+  account checks on 2026-11-25. Other GitHub/Gmail actions remain mock executions.
+- Google uses desktop OAuth with PKCE, independent scopes and OS credential
+  storage. The External Testing refresh tokens expire after seven days. The
+  capability API reports local configuration, not current provider acceptance.
 - The API supports a single configured owner for its bearer token and must be
   bound to localhost. Cancellation applies to pending and paused tasks.
 - The learning loop currently applies to one read-only GitHub priority
@@ -438,9 +440,9 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Implement Phase 4 in `TODO.md`, beginning with policy enforcement, Google OAuth,
-and credential storage at the capability boundary. Real external writes still need idempotency and
-approval controls.
+Continue Phase 4 in `TODO.md` with policy enforcement, incremental sync, and
+cross-source search. Real external writes still need idempotency and approval
+controls.
 
 ---
 

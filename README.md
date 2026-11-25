@@ -13,7 +13,7 @@ Telegram, instead of yet another chat window.
 > **Status: shared read-only workflows and versioned skills.** Telegram, CLI,
 > and a local API share a SQLite-backed runtime. GitHub notifications have a
 > live-tested adapter; Gmail headers, Drive metadata, and Calendar events have
-> credential-dependent read adapters and synthetic end-to-end tests. See
+> live-tested, read-only OAuth connections and synthetic end-to-end tests. See
 > [Current status](#current-status).
 
 ---
@@ -90,8 +90,8 @@ combines configured sources, marks missing sources, and continues when one
 provider fails. Items rotate across sources so one busy inbox does not crowd
 out the others. Direct requests such as “show my unread Gmail inbox”, “recent
 Drive files”, and “upcoming Calendar events” use the corresponding adapter.
-Google adapters use real read endpoints but have only been exercised against
-mocked HTTP responses, not a live Google account. See
+Google adapters use real read endpoints and were verified with a live Google
+account on 2026-11-25. See
 [integration research and roadmap](INTEGRATIONS.md) for scope choices, useful
 cross-service workflows, and next connector work.
 
@@ -122,12 +122,10 @@ ORIN_API_USER=local
 # ORIN_OUTPUT_RESERVE=512
 # ORIN_TASK_MODEL_CALLS=3
 # ORIN_TASK_MODEL_TOKENS=6000
-# ORIN_GMAIL_ACCESS_TOKEN=short-lived-read-only-token
-# ORIN_GMAIL_ALLOWED_USERS=local
-# ORIN_DRIVE_ACCESS_TOKEN=short-lived-metadata-token
-# ORIN_DRIVE_ALLOWED_USERS=local
-# ORIN_CALENDAR_ACCESS_TOKEN=short-lived-events-token
-# ORIN_CALENDAR_ALLOWED_USERS=local
+ORIN_GMAIL_ALLOWED_USERS=local
+ORIN_DRIVE_ALLOWED_USERS=local
+ORIN_CALENDAR_ALLOWED_USERS=local
+# ORIN_GOOGLE_CLIENT_FILE=~/.orion/config/google_oauth_client.json
 ```
 
 Set `ORIN_GITHUB_ALLOWED_USERS` to the Telegram ID or CLI/API owner that may use
@@ -135,10 +133,30 @@ the GitHub account. It defaults to `local` when unset. The API token grants acce
 only to `ORIN_API_USER`, which defaults to `local`. The CLI owner is `local` by
 default and can be changed with `ORIN_CLI_USER`. The default database is
 `~/.orion/database/orin.db`; checkpoints are in a companion SQLite file.
-Google tokens are optional, separate per capability, and currently supplied
-manually. There is no Google OAuth consent or token refresh flow yet; use
-short-lived tokens with only the documented read scopes. A direct read request
-without its token pauses until that source is configured.
+For Google, create a desktop OAuth client in a Google Cloud project with the
+Gmail, Drive, and Calendar APIs enabled. Configure an External testing consent
+screen, add your account as a test user, and add only the scopes listed in
+[INTEGRATIONS.md](INTEGRATIONS.md). Save the downloaded client JSON outside the
+repository at `~/.orion/config/google_oauth_client.json` with mode `0600`. Run
+each command and complete consent in your browser:
+
+```bash
+uv run python -m orchestration.google_oauth gmail
+uv run python -m orchestration.google_oauth drive
+uv run python -m orchestration.google_oauth calendar
+```
+
+The commands use loopback OAuth with PKCE, keep each refresh token in the OS
+credential store, and refresh access tokens when Orin reads a source. Set each
+`ORIN_*_ALLOWED_USERS` owner grant separately. `--open-browser` opens the consent
+URL automatically. `--disconnect` removes a local source credential;
+`--disconnect --revoke-google` also revokes the Google grant and clears all Orin
+Google source credentials for that account, because Google revocation applies to
+the whole project. A direct read request without its connection pauses.
+Short-lived `ORIN_GMAIL_ACCESS_TOKEN`, `ORIN_DRIVE_ACCESS_TOKEN`, and
+`ORIN_CALENDAR_ACCESS_TOKEN` remain available as explicit environment overrides.
+In Google's External **Testing** status, these refresh tokens expire after seven
+days; rerun the connect commands when they expire. [Google OAuth token behavior](https://developers.google.com/identity/protocols/oauth2)
 
 ### Run
 
@@ -191,12 +209,14 @@ Run `uv run python -m evaluation.learning` for a credential-free Phase 3 demo:
 one GitHub task proposes a skill, activation makes a crowded security alert
 visible, and rollback restores the prior ordering. It also measures three
 synthetic memory-retrieval queries. No provider call is needed for this demo.
-The integration suite uses mocked provider HTTP to test Gmail, Drive, and
-Calendar requests and runs a cross-source briefing through checkpointing,
-artifacts, memory, correction, activation, and rollback. It does not prove live
-Google connectivity. A separate read-only smoke check on 2026-11-25 completed
-the new briefing path through the existing GitHub connection and saved one
-artifact; Google sources were left unconfigured for that check.
+The integration suite mocks provider HTTP to test Gmail, Drive, and Calendar
+requests and runs a cross-source briefing through checkpointing, artifacts,
+memory, correction, activation, and rollback. OAuth tests cover scope selection,
+PKCE, owner separation, refresh, state rejection, and revocation. Separately, a
+read-only live check on 2026-11-25 fetched Gmail headers, Drive metadata, and
+Calendar events, then completed a four-source briefing through the shared
+runtime with model calls disabled. The check printed statuses and item counts,
+not private source contents.
 
 ## How it works today
 
@@ -210,6 +230,7 @@ artifact; Google sources were left unconfigured for that check.
 | `orchestration/store.py` | Versioned SQLite schema and task records |
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |
 | `orchestration/integrations.py` | Shared read evidence and Gmail, Drive, Calendar adapters |
+| `orchestration/google_oauth.py` | Desktop OAuth, refresh, OS credential storage, and disconnect |
 | `orchestration/graph.py` | Phase 0 mock graph |
 | `orchestration/agents.py` | Model backend contract and structured calls |
 | `orchestration/context.py` | Bounded context and private tool artifacts |

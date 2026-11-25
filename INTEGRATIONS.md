@@ -9,7 +9,7 @@ skill path.
 
 | Workflow | Sources | Value | Current status |
 |---|---|---|---|
-| Daily briefing | Calendar events, unread Gmail headers, recent Drive files, GitHub notifications | One view of today's commitments and changes, with source links and missing-source status | Shared read-only path implemented; Google adapters require user-supplied access tokens |
+| Daily briefing | Calendar events, unread Gmail headers, recent Drive files, GitHub notifications | One view of today's commitments and changes, with source links and missing-source status | Shared read-only path and live Google OAuth reads verified |
 | Meeting preparation | Calendar attendee/context, recent mail thread, matching Drive/Notion docs | Find the brief and open questions before a meeting | Planned; requires scoped search and entity linking |
 | Follow-up queue | Mail requiring reply, assigned GitHub reviews, Todoist tasks, calendar deadlines | Turn scattered obligations into a reviewable list | Planned; no external writes yet |
 | Project pulse | GitHub activity, Drive documents, Notion pages, Slack decisions | Summarize changes with provenance and detect stale work | Planned; would need per-source sync and permissions |
@@ -50,28 +50,30 @@ the evidence path before it gains write actions.
 | Calendar | Upcoming event metadata | `calendar.events.readonly` supports events.list. For availability-only tasks, `calendar.freebusy` is narrower and freeBusy.query returns busy intervals without descriptions. [events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list), [freeBusy.query](https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query) |
 | GitHub | Unread notifications | Existing classic-token workflow, GET only, owner-gated. [Notifications API](https://docs.github.com/en/rest/activity/notifications) |
 
-The current Google code accepts **separate, short-lived access tokens** through
+Google connections use separate desktop OAuth grants with PKCE and refresh
+tokens in the OS credential store. Short-lived access tokens through
 `ORIN_GMAIL_ACCESS_TOKEN`, `ORIN_DRIVE_ACCESS_TOKEN`, and
-`ORIN_CALENDAR_ACCESS_TOKEN`, and requires the matching
+`ORIN_CALENDAR_ACCESS_TOKEN` remain explicit overrides. Each source requires the matching
 `ORIN_GMAIL_ALLOWED_USERS`, `ORIN_DRIVE_ALLOWED_USERS`, or
-`ORIN_CALENDAR_ALLOWED_USERS` owner grant. It has
-no consent flow or refresh-token storage yet. “Configured” in the API means an
-environment token and owner grant are present; it does not certify that the
-provider accepted the token or scope. The tested adapters use read-only GET
-operations and never fetch Gmail bodies or Drive file contents.
+`ORIN_CALENDAR_ALLOWED_USERS` owner grant. “Configured” in the API means a local
+credential and owner grant are present; it does not certify that the provider
+still accepts the token. The adapters use read-only GET operations and never
+fetch Gmail bodies or Drive file contents. All three were live verified on
+2026-11-25, along with a four-source briefing. Google External Testing refresh
+tokens expire after seven days; reconnect each source to renew them.
+Local disconnect removes one stored token. Google-side revocation invalidates
+all grants to this project for the account, so Orin clears all local Google
+credentials after a successful revoke.
 
 ## Next connector work
 
-1. Add Google desktop OAuth with PKCE, per-capability consent, refresh, and OS
-   credential storage. Google documents PKCE and secure refresh-token handling
-   for installed apps. [Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
-2. Add paginated and incremental read sync with durable cursors. Gmail uses
+1. Add paginated and incremental read sync with durable cursors. Gmail uses
    `historyId` and requires a full sync if history expires; Drive uses change
    page tokens; Calendar uses sync tokens and can require a full sync after 410.
    [Gmail sync](https://developers.google.com/workspace/gmail/api/guides/sync),
    [Drive changes](https://developers.google.com/workspace/drive/api/guides/manage-changes),
    [Calendar sync](https://developers.google.com/workspace/calendar/api/guides/sync)
-3. Add search and link resolution for meeting preparation. Keep provenance and
+2. Add search and link resolution for meeting preparation. Keep provenance and
    access control on each retrieved item. Notion offers read-content
    capabilities, Slack scopes distinguish channel listing from message history,
    and Microsoft Graph has delegated permissions and delta queries.
@@ -79,15 +81,15 @@ operations and never fetch Gmail bodies or Drive file contents.
    [Slack history scopes](https://docs.slack.dev/messaging/retrieving-messages),
    [Microsoft Graph permissions](https://learn.microsoft.com/en-us/graph/permissions-overview),
    [Microsoft Graph delta](https://learn.microsoft.com/en-us/graph/delta-query-overview)
-4. Add task-manager reads before task writes. Todoist exposes `data:read` and
+3. Add task-manager reads before task writes. Todoist exposes `data:read` and
    separates it from write and delete permissions; granted scopes may be
    narrower than requested. [Todoist API](https://developer.todoist.com/api/v1/)
-5. Gate writes at the capability boundary with approval, idempotency, and an
+4. Gate writes at the capability boundary with approval, idempotency, and an
    audit trail. MCP tools and remote skills must be treated as lower-trust
    inputs; connected servers do not grant implicit local execution.
    [MCP skills security](https://skills.extensions.modelcontextprotocol.io/specification/beta/skills)
 
-The portfolio demonstration should show one real read capability and one
-cross-source synthetic run, then clearly identify which other connectors still
-need OAuth, live credentials, and provider testing. Avoid presenting adapter
-tests as proof of live account connectivity.
+The portfolio demonstration can show the live four-source read briefing and a
+cross-source synthetic run, then identify which future connectors still need
+OAuth, live credentials, and provider testing. Keep automated adapter tests
+distinct from the separate live account check.
