@@ -2,7 +2,7 @@
 
 > **Read this file at the start of every session before changing code.**
 > It is the shared context for humans and AI coding agents working on Orin.
-> Last updated: 2026-11-24
+> Last updated: 2026-11-25
 
 ---
 
@@ -55,16 +55,43 @@ Everything in the architecture follows from that sentence:
 
 ## 3. Current state
 
-Phase 1 provides a shared task runtime used by Telegram, CLI, and a localhost
+Phase 3 builds on the shared task runtime used by Telegram, CLI, and a localhost
 FastAPI gateway. Tasks, sessions, messages, events, and capability executions are
 stored in SQLite. LangGraph checkpoints live in a companion SQLite file. A
 request mentioning GitHub notifications uses a real GET workflow that groups
-unread notifications and prioritizes attention items. Other GitHub and Gmail
-requests still use the Phase 0 mock graph. Credential-free tests cover channel
+unread notifications and prioritizes attention items. Gmail inbox headers,
+Drive file metadata, and Calendar events use separate read-only Google adapters;
+daily briefings combine available sources and report missing or failed ones.
+Items rotate across sources to avoid one busy inbox hiding the rest.
+Google adapters are tested with mocked HTTP and have not been live-authorized.
+Other GitHub and Gmail actions still use the Phase 0 mock graph. Credential-free tests cover channel
 entry points, API authorization, notification fetching, and checkpoint recovery.
 
-Memory, skills, budgets, real Gmail actions, and the Hub/Node design remain
-future work. The GitHub notifications endpoint rejects fine-grained tokens, so
+Bounded context selects relevant session messages and tool excerpts while
+preserving the active objective. The GitHub workflow stores normalized tool
+output in a private artifact. Inboxes with at least five notifications use a
+budgeted model call for suggested highlights and retain a deterministic source
+list. Smaller inboxes use the local summary. Model attempts, health, token usage,
+and task budget state are recorded in SQLite. OpenRouter and local Ollama calls
+have been exercised live with synthetic data. A versioned, credential-free
+benchmark compares scripted single-model and budget-aware routing.
+
+Owner-scoped memory records now use SQLite, FTS5, and a rebuildable character-gram
+vector cache. The cache gives fuzzy lexical recall; neural semantic embeddings
+are not implemented. Completed GitHub tasks save 30-day episodes. Working
+memories expire after 7 days; other categories persist until deletion. Larger
+read workflows retrieve relevant memories into the bounded model context.
+The GitHub workflow records its active declarative skill version. A completed
+run with a security alert can propose an improved priority order, validated
+against synthetic fixtures. An owner must explicitly activate it; activating
+the previous version rolls back. The local API exposes owner-scoped memory
+inspection, correction, export, and deletion, plus skill inspection, activation,
+and usage metrics. The registry also holds a daily-briefing source-order skill;
+an explicit correction such as “calendar first” can propose a new version.
+
+General skill synthesis, neural embeddings, Google OAuth/refresh, Google live
+verification, external writes, and the Hub/Node design remain future work. The
+GitHub notifications endpoint rejects fine-grained tokens, so
 the first workflow uses a classic token with the `notifications` scope. Runtime
 code makes GET requests only and gates the capability by owner ID.
 
@@ -79,12 +106,19 @@ code makes GET requests only and gates the capability by owner ID.
 | `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
 | `orchestration/store.py` | SQLite schema migrations and records |
 | `orchestration/github.py` | Notification capability and summary |
+| `orchestration/integrations.py` | Read-only evidence contract and Google adapters |
 | `orchestration/graph.py` | Phase 0 mock graph topology |
 | `orchestration/nodes.py` | Prototype graph state and nodes |
 | `orchestration/agents.py` | Model configuration and backend contract |
+| `orchestration/context.py` | Context selection and private tool artifacts |
+| `orchestration/model_budget.py` | Model health, routing, and task budgets |
+| `orchestration/memory.py` | Owner-scoped memory, FTS5, vector cache, retention |
+| `orchestration/skills.py` | GitHub priority skill registry and evaluation |
 | `orchestration/schema.py` | Classifier and verifier schemas |
+| `evaluation/` | Synthetic fixtures and comparison benchmark |
 | `tests/` | Credential-free workflow and adapter tests |
 | `TODO.md` | Phase checklists and completion criteria |
+| `INTEGRATIONS.md` | Integration research and connector roadmap |
 
 ## 5. How execution works
 
@@ -95,9 +129,11 @@ a paused task from its LangGraph checkpoint. A running task whose worker process
 has exited can be recovered. Checkpoints use the task ID as the thread ID.
 Task records and checkpoints are in separate SQLite files to avoid writer locks.
 
-Telegram is authorized before task submission. Requests containing GitHub and
-notifications use the real notification workflow. Other requests use the Phase 0
-classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
+Telegram is authorized before task submission. GitHub notifications, Gmail inbox
+headers, Drive metadata, Calendar events, and daily briefings use the shared
+read graph. Each source has an owner grant and token setting. Daily briefings
+record partial failures and proceed with available sources. Other requests use
+the Phase 0 classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
 message IDs reuse a task. CLI and API call the same `Runtime` methods. The API
 requires a bearer token and a configured owner ID on every route.
 
@@ -108,7 +144,12 @@ requires a bearer token and a configured owner ID on every route.
 `verification_result`, `verification_status`, `feedback`, `retry_count`, and
 `final_response`. The notification graph has `task_id`, `request`,
 `notifications`, and `final_response`. The runtime owns session, task, and event
-records in `orchestration/store.py`.
+records in `orchestration/store.py`. The read graph retains the legacy
+`notifications` key for checkpoint compatibility and adds `observations` and
+`source_status` for other read workflows, plus artifact path and bounded context
+excerpt. Model budgets and health are stored with task and model records. A
+separate `skill_executions` record pins the exact skill version used by each
+read task; memory and skill records are owner-scoped.
 
 ### 5.2 Model configuration
 
@@ -116,8 +157,10 @@ records in `orchestration/store.py`.
 `openrouter:nvidia/nemotron-3.5-lightning:free`. `ORIN_FALLBACK_MODEL` optionally
 selects a backup. The backend contract normalizes structured response, model
 name, observed token usage, and known capabilities. `openrouter:` and `ollama:`
-model identifiers are supported by the installed LangChain integrations. No
-per-model health tracking or budget policy exists yet.
+model identifiers use the installed LangChain integrations. Ollama uses native
+JSON schema output. `ORIN_CONTEXT_TOKENS`, `ORIN_OUTPUT_RESERVE`,
+`ORIN_TASK_MODEL_CALLS`, and `ORIN_TASK_MODEL_TOKENS` set conservative limits.
+Missing provider quota is recorded as unknown. Rate limits apply a cooldown.
 
 ## 6. Running the foundation
 
@@ -127,7 +170,14 @@ Run `uv sync`. Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USER_IDS`, and
 and `ORIN_GITHUB_ALLOWED_USERS` for the GitHub notifications capability. The
 GitHub token must be a classic personal access token with `notifications` scope.
 Set `ORIN_API_TOKEN` for the local API. See README for complete commands and
-configuration. Use `uv run python -m pytest -q` for credential-free tests.
+configuration. Use `uv run python -m pytest -q` for credential-free tests and
+`uv run python -m evaluation.benchmark` for the scripted comparison. A small
+local Ollama model can be set as `ORIN_FALLBACK_MODEL`. Run
+`uv run python -m evaluation.learning` for the credential-free skill adoption
+and rollback demonstration. Google read adapters use separate short-lived
+`ORIN_GMAIL_ACCESS_TOKEN`, `ORIN_DRIVE_ACCESS_TOKEN`, and
+`ORIN_CALENDAR_ACCESS_TOKEN` plus matching `ORIN_*_ALLOWED_USERS` grants. See
+`INTEGRATIONS.md` for scopes and next OAuth work.
 
 ---
 
@@ -281,9 +331,9 @@ write scopes independently.
 | Phase | Scope | Status |
 |---|---|---|
 | **0. Prototype** | Telegram channel, LangGraph classify/verify, mock executors | Complete, credential-free tests pass |
-| **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, capability registry, SQLite, sessions, streaming | Implemented; live credentials unverified |
-| **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Not started |
-| **3. Adaptive learning** | Episodic/semantic memory, skill creation/versioning, evaluator, rollback | Not started |
+| **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, capability registry, SQLite, sessions, streaming | Implemented; live GitHub and Telegram smoke checks passed on 2026-11-25 |
+| **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Implemented; live cloud/local model and GitHub/Telegram checks passed |
+| **3. Adaptive learning** | Owner-scoped memory, GitHub and cross-source briefing skills, evaluator, rollback | Implemented and credential-free end-to-end tested |
 | **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals | Not started |
 | **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization, memory/skill/model management | Not started |
 | **6. Hardening** | Benchmarks, recovery tests, security tests, migrations, backup/restore, installer | Not started |
@@ -294,7 +344,8 @@ write scopes independently.
 - **Runtime:** Python + FastAPI, LangGraph, SQLite, budget manager, free-provider
   routing, persistent memory, skill creation/retrieval.
 - **Channels:** Telegram bot, local CLI, Tauri control panel.
-- **Integrations:** Notion, GitHub, Gmail, filesystem, terminal.
+- **Integrations:** GitHub, Gmail, Drive, Calendar, then Notion,
+  filesystem, and terminal as permissions mature.
 - **Agents:** main coordinator + research/coding/productivity, adaptive
   delegation, approvals, scheduled tasks.
 
@@ -307,10 +358,18 @@ Do not start with 15 integrations, six agents, and three frontends.
 - The GitHub workflow uses deterministic prioritization and a read-only GET
   operation. The required classic token has broader permissions than this code
   uses because GitHub's endpoint rejects fine-grained tokens.
-- Other GitHub and Gmail requests remain mock executions.
+- Gmail inbox headers, Drive metadata, and Calendar event reads have no live
+  account verification yet. Other GitHub/Gmail actions remain mock executions.
+- Google access tokens are manually supplied and expire; OAuth consent, refresh,
+  and OS credential storage remain next steps. The capability API reports
+  configuration, not successful provider authentication.
 - The API supports a single configured owner for its bearer token and must be
   bound to localhost. Cancellation applies to pending and paused tasks.
-- There is no memory, learning loop, quota tracking, or distributed execution.
+- The learning loop currently applies to one read-only GitHub priority
+  procedure. The local vector cache uses character n-grams and a linear scan;
+  neural embeddings and approximate nearest-neighbor search remain future work.
+- Provider quota discovery and distributed execution remain future work.
+  Unknown quota remains explicit in model records.
 - Python 3.14 remains the target. The installed LangChain stack emits Pydantic
   V1 compatibility warnings during tests.
 - A Telegram reply rejected by Telegram cannot be delivered. The bot logs a
@@ -379,8 +438,9 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Implement Phase 2 in `TODO.md`, beginning with context budgets and measured
-model routing. Real external writes still need idempotency and approval controls.
+Implement Phase 4 in `TODO.md`, beginning with policy enforcement, Google OAuth,
+and credential storage at the capability boundary. Real external writes still need idempotency and
+approval controls.
 
 ---
 

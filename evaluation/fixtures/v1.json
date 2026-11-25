@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "description": "Synthetic GitHub notification evaluation set. No account data or credentials.",
+  "cases": [
+    {
+      "id": "empty_inbox",
+      "scenario": "normal",
+      "notifications": [],
+      "expected_contains": ["no unread GitHub notifications"],
+      "expected_occurrences": {}
+    },
+    {
+      "id": "review_request",
+      "scenario": "normal",
+      "notifications": [
+        {"repository": "sample/alpha", "title": "Review parser change", "reason": "review_requested", "url": "https://github.com/sample/alpha/pull/4"}
+      ],
+      "expected_contains": ["sample/alpha", "Review parser change", "Attention:", "https://github.com/sample/alpha/pull/4"],
+      "expected_occurrences": {"Review parser change": 1}
+    },
+    {
+      "id": "mixed_repositories",
+      "scenario": "normal",
+      "notifications": [
+        {"repository": "sample/beta", "title": "Routine release", "reason": "subscribed", "url": "https://github.com/sample/beta/releases/7"},
+        {"repository": "sample/alpha", "title": "Mention in issue", "reason": "mention", "url": "https://github.com/sample/alpha/issues/8"},
+        {"repository": "sample/beta", "title": "Assigned bug", "reason": "assign", "url": "https://github.com/sample/beta/issues/9"}
+      ],
+      "expected_contains": ["sample/alpha", "sample/beta", "Mention in issue", "Assigned bug", "Routine release", "https://github.com/sample/alpha/issues/8"],
+      "expected_occurrences": {"Mention in issue": 1, "Assigned bug": 1}
+    },
+    {
+      "id": "duplicate_notification",
+      "scenario": "normal",
+      "notifications": [
+        {"repository": "sample/alpha", "title": "Review parser change", "reason": "review_requested", "url": "https://github.com/sample/alpha/pull/4"},
+        {"repository": "sample/alpha", "title": "Review parser change", "reason": "review_requested", "url": "https://github.com/sample/alpha/pull/4"}
+      ],
+      "expected_contains": ["Review parser change", "https://github.com/sample/alpha/pull/4"],
+      "expected_occurrences": {"Review parser change": 1}
+    },
+    {
+      "id": "malformed_output",
+      "scenario": "malformed_primary",
+      "notifications": [
+        {"repository": "sample/alpha", "title": "Review parser change", "reason": "review_requested", "url": "https://github.com/sample/alpha/pull/4"}
+      ],
+      "expected_contains": ["Review parser change", "https://github.com/sample/alpha/pull/4"],
+      "expected_occurrences": {"Review parser change": 1}
+    },
+    {
+      "id": "rate_limited",
+      "scenario": "rate_limited_primary",
+      "notifications": [
+        {"repository": "sample/beta", "title": "Assigned bug", "reason": "assign", "url": "https://github.com/sample/beta/issues/9"}
+      ],
+      "expected_contains": ["Assigned bug", "https://github.com/sample/beta/issues/9"],
+      "expected_occurrences": {"Assigned bug": 1}
+    }
+  ]
+}

@@ -10,9 +10,11 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: Phase 1 foundation.** Telegram, CLI, and a local API share a SQLite-backed
-> task runtime. GitHub notifications use a real read-only API call. Gmail and
-> other GitHub requests still use mock actions. See [Current status](#current-status).
+> **Status: shared read-only workflows and versioned skills.** Telegram, CLI,
+> and a local API share a SQLite-backed runtime. GitHub notifications have a
+> live-tested adapter; Gmail headers, Drive metadata, and Calendar events have
+> credential-dependent read adapters and synthetic end-to-end tests. See
+> [Current status](#current-status).
 
 ---
 
@@ -49,8 +51,49 @@ and LangGraph checkpoints. Telegram, a local CLI, and an authenticated localhost
 API submit to the same runtime. A request containing both “GitHub” and
 “notifications” fetches unread notifications, groups them by repository, and
 prioritizes mentions, assignments, and review requests with source links. This
-summary uses deterministic rules. Other GitHub and Gmail requests still run the
-Phase 0 mock graph.
+summary uses deterministic rules. Other GitHub requests still run the Phase 0
+mock graph.
+
+Phase 2 adds bounded context selection, local artifacts for tool output, a
+per-task inference budget, model health and usage records, and fallback routing.
+The GitHub workflow uses a local deterministic summary for fewer than five
+notifications. Larger inboxes request model highlights from a bounded excerpt
+and append the deterministic source list. When inference is unavailable or the
+budget is exhausted, the workflow returns the local summary. Model calls in the
+prototype graph also use task budgets. Session messages are retrieved
+selectively for relevant context.
+
+Phase 3 adds owner-scoped memory in SQLite with FTS5 and a rebuildable local
+character-gram vector cache. Episodic task summaries expire after 30 days;
+working records expire after 7 days. Semantic, procedural, and preference
+records remain until the owner deletes them. Memory can be inspected, corrected,
+exported, and deleted through the authenticated API. Search combines keyword and
+vector similarity; the vectors provide fuzzy lexical recall, not neural semantic
+embeddings. Relevant memories join the bounded context for larger read workflows.
+
+The GitHub workflow now records the exact version of its notification priority
+skill. A successful run containing a security alert can propose a learned,
+read-only priority procedure. It is checked against synthetic fixtures and stays
+inactive until the owner activates it. Activating an earlier version rolls back
+the behavior. Skills are declarative data stored in SQLite and exported as
+private versioned `SKILL.md` files; Orin never executes their text. The owner can
+also propose a custom priority order and record corrections to completed tasks.
+The same registry also versions a cross-source briefing order. A correction to a
+completed briefing such as “calendar first” can propose a validated ordering
+change for explicit owner activation and rollback. These are narrow,
+declarative learning loops, not general autonomous skill synthesis.
+Saved source orders can name a subset; future sources appear after those entries.
+
+Read-only Gmail headers, Drive file metadata, Calendar events, and GitHub
+notifications now use a shared evidence contract and task path. “Daily briefing”
+combines configured sources, marks missing sources, and continues when one
+provider fails. Items rotate across sources so one busy inbox does not crowd
+out the others. Direct requests such as “show my unread Gmail inbox”, “recent
+Drive files”, and “upcoming Calendar events” use the corresponding adapter.
+Google adapters use real read endpoints but have only been exercised against
+mocked HTTP responses, not a live Google account. See
+[integration research and roadmap](INTEGRATIONS.md) for scope choices, useful
+cross-service workflows, and next connector work.
 
 The GitHub notifications endpoint currently requires a classic personal access
 token with the `notifications` scope. GitHub does not support fine-grained tokens
@@ -73,8 +116,18 @@ ORIN_GITHUB_ALLOWED_USERS=123456789,local
 ORIN_API_TOKEN=choose-a-long-random-token
 ORIN_API_USER=local
 # ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
-# ORIN_FALLBACK_MODEL=ollama:llama3.2
+# ORIN_FALLBACK_MODEL=ollama:qwen2.5:0.5b
 # ORIN_DATABASE_PATH=/path/to/orin.db
+# ORIN_CONTEXT_TOKENS=4096
+# ORIN_OUTPUT_RESERVE=512
+# ORIN_TASK_MODEL_CALLS=3
+# ORIN_TASK_MODEL_TOKENS=6000
+# ORIN_GMAIL_ACCESS_TOKEN=short-lived-read-only-token
+# ORIN_GMAIL_ALLOWED_USERS=local
+# ORIN_DRIVE_ACCESS_TOKEN=short-lived-metadata-token
+# ORIN_DRIVE_ALLOWED_USERS=local
+# ORIN_CALENDAR_ACCESS_TOKEN=short-lived-events-token
+# ORIN_CALENDAR_ALLOWED_USERS=local
 ```
 
 Set `ORIN_GITHUB_ALLOWED_USERS` to the Telegram ID or CLI/API owner that may use
@@ -82,12 +135,17 @@ the GitHub account. It defaults to `local` when unset. The API token grants acce
 only to `ORIN_API_USER`, which defaults to `local`. The CLI owner is `local` by
 default and can be changed with `ORIN_CLI_USER`. The default database is
 `~/.orion/database/orin.db`; checkpoints are in a companion SQLite file.
+Google tokens are optional, separate per capability, and currently supplied
+manually. There is no Google OAuth consent or token refresh flow yet; use
+short-lived tokens with only the documented read scopes. A direct read request
+without its token pauses until that source is configured.
 
 ### Run
 
 ```bash
 uv run main.py
 uv run python -m orchestration.cli "Summarize my GitHub notifications"
+uv run python -m orchestration.cli "Daily briefing"
 uv run uvicorn orchestration.api:app --host 127.0.0.1
 ```
 
@@ -95,9 +153,18 @@ The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
 `/start`, `/status TASK_ID`, and `/resume TASK_ID`. Submit an API task with `POST /tasks`, run or
 resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
 stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
-`GET /tasks`, `GET /sessions`, and `GET /sessions/{id}/messages`. Send
+`GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and
+`GET /sessions/{id}/messages`. Send
 `Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
 headers. The API token is required for every route. Bind the server to localhost.
+
+Memory routes are `POST/GET /memories`, `GET /memories/search?q=...`,
+`GET /memories/export`, and `GET/PUT/DELETE /memories/{id}`. Skill routes are
+`GET /skills`, `GET /skills/metrics`, `POST /skills/custom`, `POST /skills/briefing`,
+`GET /skills/{id}`, and `POST /skills/{id}/activate`. Use
+`GET /tasks/{id}/skill` to inspect attribution and
+`POST /tasks/{id}/corrections` to record feedback. Activation is the explicit
+owner review step. The API token and owner header apply to every route.
 
 A task paused by a provider or capability failure can be resumed by ID. Work
 already checkpointed by LangGraph is reused. An interrupted process leaves a
@@ -112,8 +179,24 @@ uv run python -m pytest -q
 ```
 
 The suite simulates Telegram, HTTP, CLI, GitHub API responses, and process
-interruption without live credentials. A live GitHub or Telegram call requires
-your own credentials and was not part of the automated test run.
+interruption without live credentials. On 2026-11-25, a live GitHub notifications
+request completed and the Telegram bot returned its result through the same
+runtime. Phase 2 also passed a live synthetic five-item summary using OpenRouter,
+and a structured classifier call using local Ollama. These live checks were run
+separately from the automated suite. Run the versioned, credential-free comparison
+with `uv run python -m evaluation.benchmark`. Its token counts are scripted
+fixture values and its latency measures local execution. See
+[evaluation/README.md](evaluation/README.md) for a reproducible demo.
+Run `uv run python -m evaluation.learning` for a credential-free Phase 3 demo:
+one GitHub task proposes a skill, activation makes a crowded security alert
+visible, and rollback restores the prior ordering. It also measures three
+synthetic memory-retrieval queries. No provider call is needed for this demo.
+The integration suite uses mocked provider HTTP to test Gmail, Drive, and
+Calendar requests and runs a cross-source briefing through checkpointing,
+artifacts, memory, correction, activation, and rollback. It does not prove live
+Google connectivity. A separate read-only smoke check on 2026-11-25 completed
+the new briefing path through the existing GitHub connection and saved one
+artifact; Google sources were left unconfigured for that check.
 
 ## How it works today
 
@@ -126,8 +209,15 @@ your own credentials and was not part of the automated test run.
 | `orchestration/runtime.py` | Durable execution and checkpoint recovery |
 | `orchestration/store.py` | Versioned SQLite schema and task records |
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |
+| `orchestration/integrations.py` | Shared read evidence and Gmail, Drive, Calendar adapters |
 | `orchestration/graph.py` | Phase 0 mock graph |
 | `orchestration/agents.py` | Model backend contract and structured calls |
+| `orchestration/context.py` | Bounded context and private tool artifacts |
+| `orchestration/model_budget.py` | Model routing, health, and task budgets |
+| `orchestration/memory.py` | Owner-scoped memory, FTS5, and local vector recall |
+| `orchestration/skills.py` | Declarative, versioned skills and evaluation |
+| `evaluation/` | Versioned fixtures and comparison benchmark |
+| `INTEGRATIONS.md` | Research, use cases, scope decisions, and connector roadmap |
 
 ---
 
@@ -194,15 +284,16 @@ approval (when needed) → versioned skill → rollback available
 |---|---|
 | **0. Prototype** ✅ | Telegram + LangGraph classify/verify demo |
 | **1. Foundation** ✅ | Local API, shared runtime, provider contract, capability registry, SQLite, sessions, event streaming |
-| **2. Context engineering** | Token budgeting, compression, retrieval, checkpoints, fallback routing |
-| **3. Adaptive learning** | Episodic/semantic memory, skill creation/versioning, evaluator, rollback |
+| **2. Context engineering** ✅ | Token budgeting, bounded context, retrieval, model health, fallback routing, evaluation |
+| **3. Adaptive learning** ✅ | Owner-scoped memory, GitHub priority skill proposals/versioning, evaluator, rollback |
 | **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals |
 | **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization |
 | **6. Hardening** | Benchmarks, recovery/security tests, migrations, backup, installer |
 | **7. Distributed** | Hub, Node, capability routing, selective encrypted sync |
 
-The recommended MVP: a solid Python runtime with Telegram + CLI, Notion/GitHub/
-Gmail/filesystem/terminal tools, persistent memory, skill retrieval, budget
+The recommended MVP: a solid Python runtime with Telegram + CLI, GitHub/Gmail/
+Drive/Calendar reads, then Notion/filesystem/terminal tools, persistent memory,
+skill retrieval, budget
 control, approvals, and scheduled tasks — **before** building the full desktop
 experience.
 

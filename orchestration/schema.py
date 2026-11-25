@@ -14,3 +14,7 @@ class Verifier(BaseModel):
     feedback: str
     verification_result: dict
     final_response: str | None
+
+
+class NotificationSummary(BaseModel):
+    summary: str

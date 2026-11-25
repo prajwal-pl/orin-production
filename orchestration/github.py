@@ -69,17 +69,26 @@ async def fetch_notifications() -> list[dict]:
     return notifications
 
 
-def summarize_notifications(items: list[dict]) -> str:
+def summarize_notifications(items: list[dict], priority_reasons: list[str] | None = None) -> str:
     if not items:
         return "You have no unread GitHub notifications."
     important = {"mention", "team_mention", "assign", "review_requested", "security_alert"}
+    unique_items = list({
+        (item["repository"], item["title"], item["reason"], item["url"]): item
+        for item in items
+    }.values())
     grouped: dict[str, list[dict]] = {}
-    for item in items:
+    for item in unique_items:
         grouped.setdefault(item["repository"], []).append(item)
-    lines = [f"Unread GitHub notifications: {len(items)}"]
+    lines = [f"Unread GitHub notifications: {len(unique_items)}"]
     for repository, entries in sorted(grouped.items()):
         lines.append(f"\n{repository} ({len(entries)})")
-        for item in sorted(entries, key=lambda entry: entry["reason"] not in important)[:10]:
+        if priority_reasons is None:
+            ordered = sorted(entries, key=lambda entry: entry["reason"] not in important)
+        else:
+            ranks = {reason: index for index, reason in enumerate(priority_reasons)}
+            ordered = sorted(entries, key=lambda entry: ranks.get(entry["reason"], len(ranks)))
+        for item in ordered[:10]:
             priority = "Attention: " if item["reason"] in important else ""
             lines.append(f"- {priority}{item['title']} ({item['reason']}) {item['url']}")
         if len(entries) > 10:

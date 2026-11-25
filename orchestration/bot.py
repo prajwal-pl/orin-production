@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from orchestration.graph import graph
 from orchestration.nodes import GraphState
-from orchestration.runtime import Runtime
+from orchestration.runtime import Runtime, task_reply
 
 logger = logging.getLogger(__name__)
 PROVIDER_ERROR_REPLY = "I could not process that request right now. Please try again later."
@@ -54,7 +54,7 @@ async def telegram_bot_message(update: Update, context: ContextTypes.DEFAULT_TYP
         key = f"telegram:{owner}:{message_id}" if message_id is not None else None
         task = await service.submit(owner, session_id, update.message.text, key)
         result = await service.run(owner, task["id"])
-        reply = result.get("result") or f"Task {task['id']} is paused. Send /status {task['id']} to inspect it."
+        reply = task_reply(result)
     except Exception:
         logger.error("Telegram request failed")
         reply = PROVIDER_ERROR_REPLY
@@ -74,7 +74,7 @@ async def telegram_task_status(update: Update, context: ContextTypes.DEFAULT_TYP
     if task is None:
         await safe_reply(update.message, "Task not found.")
         return
-    await safe_reply(update.message, task["result"] or f"Task is {task['status']}.")
+    await safe_reply(update.message, task_reply(task))
 
 
 async def telegram_resume_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -94,4 +94,4 @@ async def telegram_resume_task(update: Update, context: ContextTypes.DEFAULT_TYP
     except PermissionError:
         await safe_reply(update.message, "This capability is not enabled for your account.")
         return
-    await safe_reply(update.message, task["result"] or f"Task is {task['status']}.")
+    await safe_reply(update.message, task_reply(task))

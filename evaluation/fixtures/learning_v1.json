@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "description": "Synthetic crowded GitHub inbox for priority-skill evaluation.",
+  "repository": "sample/alpha",
+  "review_request_count": 10,
+  "security_title": "Security alert",
+  "security_url": "https://github.com/sample/alpha/security/11"
+}

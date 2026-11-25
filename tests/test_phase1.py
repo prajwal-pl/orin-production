@@ -194,10 +194,10 @@ async def test_provider_result_normalizes_usage(monkeypatch):
         "messages": [SimpleNamespace(usage_metadata={"input_tokens": 7, "output_tokens": 3})],
     }))
     monkeypatch.setattr(agents, "build_agent", lambda role, model: fake)
-    monkeypatch.setenv("ORIN_MODEL", "ollama:llama3.2")
+    monkeypatch.setenv("ORIN_MODEL", "openrouter:scripted")
     monkeypatch.delenv("ORIN_FALLBACK_MODEL", raising=False)
     result = await agents.invoke_result("classifier", "test")
-    assert result.model == "ollama:llama3.2"
+    assert result.model == "openrouter:scripted"
     assert result.input_tokens == 7 and result.output_tokens == 3
     assert result.capabilities.structured_output is True
 

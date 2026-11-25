@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 and 1. Telegram, CLI, and a local API share a SQLite-backed task runtime. GitHub notifications use a real read-only API operation. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
+Orin has completed Phases 0 through 3 and added a cross-source read foundation. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications are live-tested; Gmail headers, Drive metadata, and Calendar events have read-only adapters tested with mocked HTTP. A daily briefing combines configured sources with shared context, memory, budgets, and versioned ordering skills. Durable Google connections still require a consent and refresh flow, plus live verification. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -35,38 +35,44 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 ## Phase 2 — Engineer context and model budgets
 
-- [ ] Define active, working, persistent, procedural, and archived context sources. Select material by task relevance and preserve the active objective and critical execution state.
-- [ ] Count tokens with provider tokenizers where available, estimate conservatively elsewhere, and reserve capacity for model output.
-- [ ] Persist raw tool outputs locally and pass bounded summaries or selected excerpts into model context. Expose only capabilities relevant to the current step.
-- [ ] Record per-model capabilities, health, observed usage, quotas where available, and cooldowns. Handle unknown quota explicitly.
-- [ ] Route work by task complexity and capability requirements. Apply per-task call and token limits, bounded retries, and checkpoint-aware fallback on transient failure.
-- [ ] Define what the user sees when the runtime switches models, reduces work, or pauses because it has exhausted the budget.
-- [ ] Exercise cloud and local inference through the same adapter contract. Add providers incrementally against the supported capability matrix.
-- [ ] Build a versioned evaluation set for the GitHub workflow using sanitized fixtures. Include empty inboxes, duplicate notifications, malformed outputs, and rate limits.
-- [ ] Compare single-model and budget-aware runs on identical inputs. Report task success, token use, latency, and fallback recovery. Record models, settings, and limitations.
-- [ ] Document the portfolio milestone with a reproducible benchmark and a short demo showing real execution, restart recovery, and model fallback.
+- [x] Define active, working, persistent, procedural, and archived context sources. Select material by task relevance and preserve the active objective and critical execution state.
+- [x] Count tokens with provider tokenizers where available, estimate conservatively elsewhere, and reserve capacity for model output.
+- [x] Persist raw tool outputs locally and pass bounded summaries or selected excerpts into model context. Expose only capabilities relevant to the current step.
+- [x] Record per-model capabilities, health, observed usage, quotas where available, and cooldowns. Handle unknown quota explicitly.
+- [x] Route work by task complexity and capability requirements. Apply per-task call and token limits, bounded retries, and checkpoint-aware fallback on transient failure.
+- [x] Define what the user sees when the runtime switches models, reduces work, or pauses because it has exhausted the budget.
+- [x] Exercise cloud and local inference through the same adapter contract. Add providers incrementally against the supported capability matrix.
+- [x] Build a versioned evaluation set for the GitHub workflow using sanitized fixtures. Include empty inboxes, duplicate notifications, malformed outputs, and rate limits.
+- [x] Compare single-model and budget-aware runs on identical inputs. Report task success, token use, latency, and fallback recovery. Record models, settings, and limitations.
+- [x] Document the portfolio milestone with a reproducible benchmark and a short demo showing real execution, restart recovery, and model fallback.
 
 **Done when** a repeatable evaluation shows how routing affects quality and resource use, and injected provider failures produce a bounded fallback or a resumable pause.
 
 ## Phase 3 — Add memory and learning
 
-- [ ] Define records and retention rules for episodic, semantic, procedural, preference, and working memory. Store provenance and isolate records by authorized user.
-- [ ] Keep SQLite authoritative. Add FTS5 search, then a rebuildable local vector index and combined retrieval. Evaluate relevance on representative tasks.
-- [ ] Support inspection, correction, export, and deletion of memory, including removal from indexes.
-- [ ] Create a skill registry for built-in, custom, and learned skills. Version `SKILL.md` procedures and capture metadata, required permissions, and evaluation results.
-- [ ] Generate skill proposals from successful runs. Validate proposals with fixtures, review changes when required, and retain rollback to a previous version.
-- [ ] Track which skill version each run used. Prevent a learned skill from expanding permissions or modifying executable code or policy.
-- [ ] Compare recurring tasks before and after adopting a skill. Track task success, model calls, and user corrections.
+- [x] Define records and retention rules for episodic, semantic, procedural, preference, and working memory. Store provenance and isolate records by authorized user.
+- [x] Keep SQLite authoritative. Add FTS5 search and a rebuildable local character-gram vector cache for combined retrieval. Evaluate relevance on representative synthetic queries. Neural semantic embeddings remain future work.
+- [x] Support inspection, correction, export, and deletion of memory, including removal from indexes.
+- [x] Create a skill registry for built-in, custom, and learned GitHub priority skills. Version `SKILL.md` procedures and capture metadata, required permissions, and evaluation results.
+- [x] Generate priority skill proposals from successful GitHub runs. Validate proposals with fixtures, require explicit owner activation, and retain rollback to a previous version.
+- [x] Track which skill version each read workflow used. Prevent a learned skill from expanding permissions or modifying executable code or policy.
+- [x] Compare recurring GitHub and briefing tasks before and after adopting a skill. Track task success, model calls, and user corrections.
+- [x] Use one read-only evidence contract for GitHub, Gmail headers, Drive metadata, and Calendar events. Combine configured sources in a briefing, preserve partial-failure status, and record artifacts and episodes through the shared runtime.
+- [x] Let a correction to a completed briefing propose a validated source-order skill; require explicit activation and support rollback.
 
 **Done when** a retrieved memory or versioned skill improves a recurring workflow in evaluation, and the user can inspect and reverse the change.
 
 ## Phase 4 — Add controlled autonomy
 
+- [ ] Implement Google desktop OAuth with PKCE, independent least-privilege grants for Gmail, Drive, and Calendar, refresh-token storage in the OS credential store, revocation, and live account checks.
+- [ ] Add paginated and incremental read sync: Gmail history IDs, Drive change tokens, Calendar sync tokens, and full-resync recovery on expired cursors. Keep each source's data and provenance owner-scoped.
+- [ ] Build owner-scoped cross-source search with citations, account identity, freshness, and metadata/content separation. Evaluate retrieval across at least two providers and local files.
 - [ ] Enforce policy at the capability boundary. Scope filesystem access to approved roots and account credentials to specific read or write operations.
 - [ ] Persist approvals tied to the user, action parameters, and expiration. Enforce them for destructive actions and test denial, expiry, and replay.
 - [ ] Introduce scoped filesystem tools, isolated terminal execution, and isolated browser sessions. Bound runtime, resource use, and output.
 - [ ] Add MCP server registration and trust controls. Treat web pages, files, integration responses, and MCP outputs as untrusted data.
-- [ ] Add Gmail and Notion workflows incrementally. Begin with read operations and test explicit approvals before enabling sensitive writes.
+- [ ] Extend read workflows for meeting preparation and follow-up queues. Add Notion, Todoist, Slack, and Microsoft Graph incrementally according to `INTEGRATIONS.md`; verify each provider's scopes and live behavior before claiming support.
+- [ ] Add Gmail/Calendar/Drive writes only after explicit action approval, idempotency, and recovery from ambiguous provider responses.
 - [ ] Add durable scheduled jobs with time-zone handling, cancellation, missed-run behavior, and duplicate-run prevention.
 - [ ] Add selective delegation within the shared runtime. Bound delegated tool permissions and inference budgets, and track child task progress and cancellation.
 - [ ] Test approval bypass attempts, workspace escape attempts, untrusted tool content, and retries after an ambiguous external write.
@@ -77,6 +83,7 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 - [ ] Build the Next.js control center on the existing gateway. Show live activity, task history, failures, and recovery controls.
 - [ ] Add session, memory, skill version, model, and usage views. Expose approval, schedule, and node status controls as their runtime capabilities become available.
+- [ ] Show per-source configuration, granted scopes, token expiry, last successful sync, and partial-failure status; never label an environment token as a verified live connection without a provider check.
 - [ ] Package the interface in Tauri and manage the local Python service lifecycle, including startup, shutdown, restart, and failure reporting.
 - [ ] Support event reconnect and show stale or disconnected status. Verify that task controls remain usable with keyboard navigation.
 - [ ] Keep channel adapters thin. Add Discord and Slack through the same runtime with account linking and channel-specific authorization.
