@@ -110,6 +110,9 @@ tested against a local server with an isolated database. Tauri packaging and
 deeper memory/skill controls remain in 5B.
 The UI design is recorded in `web/DESIGN.md`: task-first layout, restrained
 warm-neutral tokens, accessible status labels, and reduced-motion fallbacks.
+The pairing screen and workbench share a saved light/dark preference that
+defaults to the OS setting. The SVG favicon is part of the Next.js static
+export and is served from the loopback FastAPI process.
 
 ## 4. Repository map
 

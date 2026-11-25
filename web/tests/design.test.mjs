@@ -6,9 +6,13 @@ const css = readFileSync(
   new URL("../styles/foundation.css", import.meta.url),
   "utf8",
 );
+const darkCss = readFileSync(
+  new URL("../styles/dark.css", import.meta.url),
+  "utf8",
+);
 
-function token(name) {
-  const match = css.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
+function token(name, source = css) {
+  const match = source.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, "i"));
   assert.ok(match, `Missing ${name} design token`);
   return match[1];
 }
@@ -44,6 +48,19 @@ test("core reading and action colors meet normal-text contrast", () => {
     contrast("#ffffff", token("accent")) >= 4.5,
     "primary button label",
   );
+});
+
+test("dark theme keeps core text and primary actions readable", () => {
+  for (const foreground of ["ink", "ink-soft", "muted", "quiet", "accent"]) {
+    for (const background of ["paper", "canvas"]) {
+      assert.ok(
+        contrast(token(foreground, darkCss), token(background, darkCss)) >= 4.5,
+        `${foreground} on dark ${background}`,
+      );
+    }
+  }
+  assert.ok(contrast("#261b16", token("accent", darkCss)) >= 4.5);
+  assert.match(darkCss, /color-scheme:\s*dark/);
 });
 
 test("motion has a reduced-motion fallback", () => {

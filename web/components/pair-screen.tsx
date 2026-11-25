@@ -13,6 +13,7 @@ import { pairBrowser } from "@/lib/api";
 import type { BrowserSession } from "@/lib/types";
 import { Brand } from "./brand";
 import { Notice } from "./ui";
+import { ThemeToggle } from "./theme-toggle";
 
 export function PairScreen({
   available,
@@ -88,6 +89,7 @@ export function PairScreen({
         </div>
       </section>
       <section className="pair-form-wrap">
+        <ThemeToggle className="pair-theme-toggle" />
         <div className="pair-form-card">
           <div className="pair-form-icon">
             <KeyRound size={22} />

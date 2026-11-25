@@ -20,3 +20,10 @@ def attach_web_assets(app: FastAPI) -> None:
         if not index.is_file():
             raise HTTPException(503, "Control center assets are missing; run npm run build in web/")
         return FileResponse(index, media_type="text/html")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    def control_center_favicon():
+        favicon = WEB_OUTPUT / "favicon.svg"
+        if not favicon.is_file():
+            raise HTTPException(404, "Control center favicon is missing")
+        return FileResponse(favicon, media_type="image/svg+xml")

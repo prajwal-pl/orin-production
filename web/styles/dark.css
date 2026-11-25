@@ -1,0 +1,282 @@
+/* The explicit choice on the browser wins; the first visit follows the OS. */
+.theme-icon-light {
+  display: none;
+}
+.pair-form-wrap {
+  position: relative;
+}
+.pair-theme-toggle {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+}
+html[data-theme="dark"] .theme-icon-light {
+  display: block;
+}
+html[data-theme="dark"] .theme-icon-dark {
+  display: none;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #141b1a;
+  --paper: #1d2624;
+  --paper-subtle: #222d29;
+  --ink: #edf3ed;
+  --ink-soft: #d1ddd3;
+  --muted: #adbdaf;
+  --quiet: #9fb1a2;
+  --line: #36463e;
+  --line-strong: #516354;
+  --accent: #f0b18e;
+  --accent-hover: #ffcaab;
+  --accent-soft: #3a2b26;
+  --green: #91d9b0;
+  --green-soft: #1c382c;
+  --amber: #edca86;
+  --amber-soft: #3a3020;
+  --red: #f0a49a;
+  --red-soft: #402928;
+  --sidebar: #192220;
+  --sidebar-text: #f4f5f0;
+  --sidebar-muted: #aebbb4;
+}
+
+html[data-theme="dark"] ::selection {
+  background: #78503d;
+  color: var(--ink);
+}
+html[data-theme="dark"] .button-primary {
+  color: #261b16;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 25%);
+}
+html[data-theme="dark"] .button-secondary:not(:disabled):hover,
+html[data-theme="dark"] .button-quiet:not(:disabled):hover {
+  border-color: #728778;
+}
+html[data-theme="dark"] .button-light {
+  background: #edf3ed;
+  color: #202a29;
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: #9dad9f;
+}
+html[data-theme="dark"] input:focus,
+html[data-theme="dark"] textarea:focus,
+html[data-theme="dark"] select:focus {
+  outline-color: rgb(240 177 142 / 20%);
+}
+html[data-theme="dark"] .empty-state > svg,
+html[data-theme="dark"] .row-arrow,
+html[data-theme="dark"] .task-detail-meta svg,
+html[data-theme="dark"] .session-row svg {
+  color: #98aa9e;
+}
+html[data-theme="dark"] .notice,
+html[data-theme="dark"] .inline-info {
+  border-color: #36594b;
+  background: #1c322b;
+  color: #c3dfce;
+}
+html[data-theme="dark"] .inline-info strong {
+  color: #e0f1e4;
+}
+html[data-theme="dark"] .notice-error {
+  border-color: #744541;
+  background: var(--red-soft);
+  color: #f5bdb5;
+}
+html[data-theme="dark"] .notice-success {
+  border-color: #36594b;
+  background: var(--green-soft);
+  color: #bce8c9;
+}
+html[data-theme="dark"] .status-badge {
+  background: #303d36;
+  color: #c9d5ca;
+}
+html[data-theme="dark"] .status-success {
+  background: var(--green-soft);
+  color: var(--green);
+}
+html[data-theme="dark"] .status-info {
+  background: #25384b;
+  color: #accbf0;
+}
+html[data-theme="dark"] .status-warning {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+html[data-theme="dark"] .status-danger {
+  background: var(--red-soft);
+  color: var(--red);
+}
+html[data-theme="dark"] kbd {
+  border-color: var(--line-strong);
+  background: #2a352f;
+  color: #c4d1c5;
+}
+
+/* Shared shell and pairing view. The sidebar is intentionally dark in both modes. */
+html[data-theme="dark"] .topbar,
+html[data-theme="dark"] .composer form,
+html[data-theme="dark"] .context-card-head button,
+html[data-theme="dark"] .task-list-row,
+html[data-theme="dark"] .approval-card {
+  background: var(--paper);
+}
+html[data-theme="dark"] .breadcrumb {
+  color: #e5ab88;
+}
+html[data-theme="dark"] .breadcrumb span {
+  color: #8da092;
+}
+html[data-theme="dark"] .connection-pill {
+  border-color: #37624a;
+  background: #1f3a2b;
+  color: #afe2bf;
+}
+html[data-theme="dark"] .connection-pill.offline {
+  border-color: #795337;
+  background: #382b22;
+  color: #efc19b;
+}
+html[data-theme="dark"] .header-avatar {
+  border-color: #a7765a;
+  background: #dbad93;
+  color: #2d211b;
+}
+html[data-theme="dark"] .pair-form-icon,
+html[data-theme="dark"] .approval-icon,
+html[data-theme="dark"] .next-run-icon {
+  border-color: #644536;
+  background: #352820;
+}
+
+/* Overview cards, task composer, and attention surfaces. */
+html[data-theme="dark"] .overview-summary strong em,
+html[data-theme="dark"] .suggestions button svg,
+html[data-theme="dark"] .next-run.empty .next-run-icon {
+  color: #a6b8aa;
+}
+html[data-theme="dark"] .composer {
+  border-color: var(--line);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 12%);
+}
+html[data-theme="dark"] .composer form:focus-within,
+html[data-theme="dark"] .suggestions button:hover {
+  border-color: var(--accent);
+}
+html[data-theme="dark"] .suggestions,
+html[data-theme="dark"] .context-link,
+html[data-theme="dark"] .filter-bar button:hover,
+html[data-theme="dark"] .search-field,
+html[data-theme="dark"] .task-result,
+html[data-theme="dark"] .parameters-block {
+  background: var(--paper-subtle);
+}
+html[data-theme="dark"] .suggestions button {
+  color: var(--ink-soft);
+}
+html[data-theme="dark"] .recent-row,
+html[data-theme="dark"] .connection-row,
+html[data-theme="dark"] .task-list-row,
+html[data-theme="dark"] .source-row,
+html[data-theme="dark"] .parameters-block > span {
+  border-bottom-color: var(--line);
+}
+html[data-theme="dark"] .recent-row:hover,
+html[data-theme="dark"] .task-list-row:hover {
+  background: #26342d;
+}
+html[data-theme="dark"] .task-list-row.selected {
+  background: #3a2c24;
+}
+html[data-theme="dark"] .recent-icon,
+html[data-theme="dark"] .task-result,
+html[data-theme="dark"] .parameters-block,
+html[data-theme="dark"] .schedule-icon,
+html[data-theme="dark"] .model-icon {
+  border-color: var(--line);
+}
+html[data-theme="dark"] .attention-panel {
+  border-color: #65503b;
+  background: #2c2821;
+}
+html[data-theme="dark"] .context-heading,
+html[data-theme="dark"] .attention-list button {
+  border-bottom-color: #594635;
+}
+html[data-theme="dark"] .context-icon {
+  border-color: #76563d;
+  background: #3a3025;
+}
+html[data-theme="dark"] .context-heading p,
+html[data-theme="dark"] .attention-list small {
+  color: #d4af8d;
+}
+html[data-theme="dark"] .attention-list button:hover {
+  background: #3a3025;
+}
+html[data-theme="dark"] .attention-number {
+  border-color: #76563d;
+}
+html[data-theme="dark"] .all-clear > span {
+  border-color: #396247;
+  background: var(--green-soft);
+}
+html[data-theme="dark"] .service-mark,
+html[data-theme="dark"] .section-icon,
+html[data-theme="dark"] .action-symbol,
+html[data-theme="dark"] .next-run.empty .next-run-icon {
+  border-color: var(--line);
+  background: #293630;
+  color: #bdc9bc;
+}
+html[data-theme="dark"] .service-gmail,
+html[data-theme="dark"] .service-todoist {
+  background: #3b2928;
+  color: #f5aaa0;
+}
+html[data-theme="dark"] .service-drive {
+  background: #21382b;
+  color: #a6d9ab;
+}
+html[data-theme="dark"] .service-calendar,
+html[data-theme="dark"] .service-microsoft {
+  background: #26364a;
+  color: #a9c6ed;
+}
+html[data-theme="dark"] .service-github,
+html[data-theme="dark"] .service-notion {
+  background: #34403b;
+  color: #e3ece2;
+}
+html[data-theme="dark"] .service-slack {
+  background: #392c42;
+  color: #e4b7ec;
+}
+
+/* Activity, approvals, automations, and system details. */
+html[data-theme="dark"] .search-field {
+  color: var(--muted);
+}
+html[data-theme="dark"] .task-result,
+html[data-theme="dark"] .parameters-block pre {
+  color: var(--ink-soft);
+}
+html[data-theme="dark"] .schedule-icon {
+  background: #24392b;
+}
+html[data-theme="dark"] .model-icon {
+  background: #263645;
+  color: #b5d2e7;
+}
+
+@media (max-width: 760px) {
+  .pair-theme-toggle {
+    top: 15px;
+    right: 24px;
+  }
+}

@@ -11,6 +11,7 @@ def test_static_export_served_from_gateway(monkeypatch, tmp_path):
     asset = output / "_next" / "static" / "app.js"
     asset.parent.mkdir(parents=True)
     (output / "index.html").write_text("<h1>Local control center</h1>")
+    (output / "favicon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
     asset.write_text("window.orin = true")
     monkeypatch.setattr(web_assets, "WEB_OUTPUT", output)
     app = FastAPI()
@@ -19,6 +20,9 @@ def test_static_export_served_from_gateway(monkeypatch, tmp_path):
     with TestClient(app) as client:
         assert "Local control center" in client.get("/").text
         assert client.get("/_next/static/app.js").text == "window.orin = true"
+        favicon = client.get("/favicon.svg")
+        assert favicon.status_code == 200
+        assert favicon.headers["content-type"].startswith("image/svg+xml")
 
 
 def test_missing_static_export_reports_build_step(monkeypatch, tmp_path):

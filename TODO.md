@@ -93,6 +93,7 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 - [x] Add review screens for exact action approvals and scheduled jobs, including their status and cancellation controls. Keep dangerous operations behind existing approvals.
 - [x] Make the UI responsive and keyboard usable. Test pairing, authorization, refresh, tasks, approvals, and schedules end to end in a real browser against a local server.
 - [x] Refine the local UI as a task-first workbench with a documented color, type, spacing, state, and motion system. Verify core text contrast and reduced-motion behavior, and check desktop and narrow browser layouts against real task data.
+- [x] Add system-aware light/dark mode, a persistent browser preference, and an Orin favicon. Check both themes and the favicon through the local service.
 
 **5A done when** an authorized owner can start one local service, pair a browser at `127.0.0.1`, inspect live state, submit and recover a task, and review approvals without a Node server or cloud-hosted UI.
 

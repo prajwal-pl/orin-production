@@ -136,6 +136,9 @@ contacted. Tauri packaging and deeper memory/skill management remain in 5B.
 The control center now uses a task-first workbench, compact activity and
 review views, and a documented visual system. See [web design notes](web/DESIGN.md)
 for layout decisions, tokens, accessibility rules, and research references.
+The pairing screen and workbench include a light/dark toggle. A first visit
+follows the operating system; a choice is saved in this browser. The Orin
+favicon is served by the same local FastAPI process as the UI.
 
 The GitHub notifications endpoint currently requires a classic personal access
 token with the `notifications` scope. GitHub does not support fine-grained tokens

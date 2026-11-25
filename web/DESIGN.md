@@ -16,6 +16,9 @@ and system details remain available without competing with the current task.
 
 - Warm paper surfaces and graphite text provide a calm working area. Copper is
   reserved for actions and selection; green, amber, and red communicate states.
+- The dark palette uses graphite surfaces, soft light text, and a brighter copper
+  accent. Both palettes preserve the same semantic states and layout. The first
+  visit follows the OS theme; an explicit choice is stored in the browser.
 - Use IBM Plex Sans for reading and IBM Plex Mono for identifiers, timestamps,
   and counts. Keep a restrained type scale and tabular numbers.
 - Use borders and spacing to distinguish surfaces. Reserve shadows for overlays.
@@ -27,6 +30,8 @@ and system details remain available without competing with the current task.
   animate opacity and transform, and honor `prefers-reduced-motion`.
 - Preserve native form controls, visible focus rings, generous pointer targets,
   semantic headings, and keyboard operation.
+- The theme control is available before and after pairing. The favicon repeats
+  the Orin mark at small sizes and is served from the local origin.
 
 ## Layout
 

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { Brand } from "./brand";
+import { ThemeToggle } from "./theme-toggle";
 
 export type View =
   "overview" | "tasks" | "connections" | "approvals" | "schedules" | "system";
@@ -165,6 +166,7 @@ export function Shell({
             >
               <RefreshCw size={17} />
             </button>
+            <ThemeToggle />
             <span className="header-avatar" title={`Signed in as ${owner}`}>
               {owner.slice(0, 1).toUpperCase()}
             </span>
