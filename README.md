@@ -10,10 +10,10 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: shared read-only workflows and versioned skills.** Telegram, CLI,
-> and a local API share a SQLite-backed runtime. GitHub notifications have a
-> live-tested adapter; Gmail headers, Drive metadata, and Calendar events have
-> live-tested, read-only OAuth connections and synthetic end-to-end tests. See
+> **Status: Phase 4 controlled autonomy implemented with fixture coverage.**
+> Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub and
+> Google read adapters have been checked against live accounts. Optional service
+> adapters and Google write scopes still need live account verification. See
 > [Current status](#current-status).
 
 ---
@@ -95,6 +95,37 @@ account on 2026-11-25. See
 [integration research and roadmap](INTEGRATIONS.md) for scope choices, useful
 cross-service workflows, and next connector work.
 
+Phase 4 adds durable incremental metadata sync for Gmail, Drive, and Calendar;
+owner-scoped search with citations, account labels, fetch time, and an explicit
+content gate; and read-only meeting preparation and follow-up queues. The
+Notion, Todoist, Slack, and Microsoft Graph read adapters have credential-free
+provider tests but have not been checked against live accounts. Account labels
+for Calendar and these optional sources are caller configured and shown as
+`unverified` unless configured. Search indexes metadata from connected reads;
+local `.md` and `.txt` content is indexed only from an approved root and returned
+only with the `search.content` grant.
+
+The local API now supports owner-scoped capability grants, exact single-use
+approvals, audited local tools, and a trusted stdio MCP registry. Filesystem
+writes create new files only. Terminal commands run in a bounded, networkless,
+read-only Docker container with an approved workspace mount; Docker must be
+available locally. Browser reads use a temporary Chrome profile and accept
+public HTTPS URLs with bounded output and time. The browser profile is isolated
+from the user's normal profile, but this is not a network sandbox and redirects
+or DNS changes can still matter. A trusted MCP executable runs with the local
+user's host privileges, so register only executables you trust; returned text
+is marked untrusted data.
+
+Scheduled one-time and daily jobs run through the same runtime with IANA time
+zones, missed-run rules, leases, cancellation, and stable idempotency keys.
+Delegated child tasks keep the shared task path and are limited by declared read
+capabilities and model-call/token budgets. Narrow Gmail send, Calendar event
+create, and Drive folder create actions require an owner grant, a matching
+single-use approval, and an idempotency key. Unknown provider outcomes stop
+automatic retries; Calendar and Drive can be reconciled with read requests.
+Gmail send with an unknown outcome requires manual inspection of Sent mail.
+These write paths have provider-shaped tests; no real Google write was sent.
+
 The GitHub notifications endpoint currently requires a classic personal access
 token with the `notifications` scope. GitHub does not support fine-grained tokens
 for this endpoint. Orin makes GET requests only and limits this capability to
@@ -125,6 +156,13 @@ ORIN_API_USER=local
 ORIN_GMAIL_ALLOWED_USERS=local
 ORIN_DRIVE_ALLOWED_USERS=local
 ORIN_CALENDAR_ALLOWED_USERS=local
+# Optional read adapters (each also needs ORIN_<SOURCE>_ALLOWED_USERS=local):
+# ORIN_NOTION_TOKEN=...
+# ORIN_TODOIST_TOKEN=...
+# ORIN_SLACK_TOKEN=...
+# ORIN_SLACK_CHANNEL_IDS=C0123456789
+# ORIN_MICROSOFT_TOKEN=...
+# ORIN_<SOURCE>_ACCOUNT_ID=your-account-label
 # ORIN_GOOGLE_CLIENT_FILE=~/.orion/config/google_oauth_client.json
 ```
 
@@ -153,6 +191,18 @@ URL automatically. `--disconnect` removes a local source credential;
 `--disconnect --revoke-google` also revokes the Google grant and clears all Orin
 Google source credentials for that account, because Google revocation applies to
 the whole project. A direct read request without its connection pauses.
+If you choose to enable a write capability, first add its scope to the consent
+screen and connect it separately using the OAuth command with source
+`gmail_send`, `calendar_write`, or `drive_write`. For example:
+
+```bash
+uv run python -m orchestration.google_oauth calendar_write
+```
+
+The respective scopes are
+`gmail.send`, `calendar.events`, and `drive.file`. Review the exact action and
+approval through the local API before running it. The existing read OAuth
+connections do not authorize writes.
 Short-lived `ORIN_GMAIL_ACCESS_TOKEN`, `ORIN_DRIVE_ACCESS_TOKEN`, and
 `ORIN_CALENDAR_ACCESS_TOKEN` remain available as explicit environment overrides.
 In Google's External **Testing** status, these refresh tokens expire after seven
@@ -175,6 +225,22 @@ stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /sessions/{id}/messages`. Send
 `Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
 headers. The API token is required for every route. Bind the server to localhost.
+
+Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
+`GET /search` and `POST /search/index-local`; `/policy/grants`, `/policy/roots`,
+`/policy/audit`, and `/approvals`; `/actions` for preparing, running, and
+reconciling writes; `/schedules` and `/delegations`; `/tools/files`,
+`/tools/terminal`, `/tools/browser`, and `/mcp/servers`. All use the same API
+token and owner header. A running schedule needs a separate local worker:
+
+```bash
+uv run python -m orchestration.schedule_worker
+```
+
+Use `--once` to dispatch due jobs once. Keep this worker running for daily jobs.
+Schedule requests can perform any already authorized read workflow, so review
+the request and connected sources before creating one. All Phase 4 API routes
+are local controls; no Telegram approval interface exists yet.
 
 Memory routes are `POST/GET /memories`, `GET /memories/search?q=...`,
 `GET /memories/export`, and `GET/PUT/DELETE /memories/{id}`. Skill routes are
@@ -217,6 +283,20 @@ read-only live check on 2026-11-25 fetched Gmail headers, Drive metadata, and
 Calendar events, then completed a four-source briefing through the shared
 runtime with model calls disabled. The check printed statuses and item counts,
 not private source contents.
+On 2026-11-25, a separate live Telegram check connected the same three
+read-only Google scopes to the authorized Telegram owner through desktop OAuth.
+Messages requesting the Gmail inbox, recent Drive files, upcoming Calendar
+events, and a daily briefing all completed and received bot replies. The
+briefing's execution history recorded completed Gmail, Drive, Calendar, and
+GitHub reads. The local bot process was stopped after this smoke check; start it
+with `uv run main.py` to receive new Telegram messages.
+The Phase 4 fictional Aurora launch test exercises meeting prep, cited search,
+approved local content, a scheduled briefing, bounded delegation, and an
+ambiguous Calendar write across the API and runtime. Provider-shaped tests
+check Google write request bodies and single-use approval behavior. The
+credential-free search evaluation runs with
+`uv run python -m evaluation.phase4_search`; its fixture spans Gmail, Drive,
+Calendar, and one approved local note.
 
 ## How it works today
 
@@ -231,6 +311,11 @@ not private source contents.
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |
 | `orchestration/integrations.py` | Shared read evidence and Gmail, Drive, Calendar adapters |
 | `orchestration/google_oauth.py` | Desktop OAuth, refresh, OS credential storage, and disconnect |
+| `orchestration/sync.py`, `orchestration/search.py` | Incremental metadata sync and owner-scoped search |
+| `orchestration/policy.py`, `orchestration/actions.py` | Capability grants, approvals, audit, and durable external writes |
+| `orchestration/local_tools.py`, `orchestration/mcp_registry.py` | Scoped local tools and trusted stdio MCP calls |
+| `orchestration/scheduler.py`, `orchestration/delegation.py` | Durable schedules and bounded child tasks |
+| `orchestration/productivity.py`, `orchestration/external_reads.py` | Meeting/follow-up procedures and optional read adapters |
 | `orchestration/graph.py` | Phase 0 mock graph |
 | `orchestration/agents.py` | Model backend contract and structured calls |
 | `orchestration/context.py` | Bounded context and private tool artifacts |
@@ -307,7 +392,7 @@ approval (when needed) → versioned skill → rollback available
 | **1. Foundation** ✅ | Local API, shared runtime, provider contract, capability registry, SQLite, sessions, event streaming |
 | **2. Context engineering** ✅ | Token budgeting, bounded context, retrieval, model health, fallback routing, evaluation |
 | **3. Adaptive learning** ✅ | Owner-scoped memory, GitHub priority skill proposals/versioning, evaluator, rollback |
-| **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals |
+| **4. Autonomy** ✅ core | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes; live optional-account checks pending |
 | **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization |
 | **6. Hardening** | Benchmarks, recovery/security tests, migrations, backup, installer |
 | **7. Distributed** | Hub, Node, capability routing, selective encrypted sync |

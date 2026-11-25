@@ -25,6 +25,9 @@ GOOGLE_SCOPES = {
     "gmail": "https://www.googleapis.com/auth/gmail.metadata",
     "drive": "https://www.googleapis.com/auth/drive.metadata.readonly",
     "calendar": "https://www.googleapis.com/auth/calendar.events.readonly",
+    "gmail_send": "https://www.googleapis.com/auth/gmail.send",
+    "calendar_write": "https://www.googleapis.com/auth/calendar.events",
+    "drive_write": "https://www.googleapis.com/auth/drive.file",
 }
 
 

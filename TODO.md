@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 through 3 and added a cross-source read foundation. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. A daily briefing combines configured sources with shared context, memory, budgets, and versioned ordering skills. Google desktop OAuth with per-source scopes, OS credential storage, and refresh is implemented. Other GitHub and Gmail actions remain mocks. Checked items describe implemented capabilities. The remaining items are implementation work.
+Orin has completed Phases 0 through 3 and implemented the Phase 4 controlled-autonomy core. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -65,19 +65,21 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 ## Phase 4 — Add controlled autonomy
 
 - [x] Implement Google desktop OAuth with PKCE, independent least-privilege grants for Gmail, Drive, and Calendar, refresh-token storage in the OS credential store, revocation, and live account checks.
-- [ ] Add paginated and incremental read sync: Gmail history IDs, Drive change tokens, Calendar sync tokens, and full-resync recovery on expired cursors. Keep each source's data and provenance owner-scoped.
-- [ ] Build owner-scoped cross-source search with citations, account identity, freshness, and metadata/content separation. Evaluate retrieval across at least two providers and local files.
-- [ ] Enforce policy at the capability boundary. Scope filesystem access to approved roots and account credentials to specific read or write operations.
-- [ ] Persist approvals tied to the user, action parameters, and expiration. Enforce them for destructive actions and test denial, expiry, and replay.
-- [ ] Introduce scoped filesystem tools, isolated terminal execution, and isolated browser sessions. Bound runtime, resource use, and output.
-- [ ] Add MCP server registration and trust controls. Treat web pages, files, integration responses, and MCP outputs as untrusted data.
-- [ ] Extend read workflows for meeting preparation and follow-up queues. Add Notion, Todoist, Slack, and Microsoft Graph incrementally according to `INTEGRATIONS.md`; verify each provider's scopes and live behavior before claiming support.
-- [ ] Add Gmail/Calendar/Drive writes only after explicit action approval, idempotency, and recovery from ambiguous provider responses.
-- [ ] Add durable scheduled jobs with time-zone handling, cancellation, missed-run behavior, and duplicate-run prevention.
-- [ ] Add selective delegation within the shared runtime. Bound delegated tool permissions and inference budgets, and track child task progress and cancellation.
-- [ ] Test approval bypass attempts, workspace escape attempts, untrusted tool content, and retries after an ambiguous external write.
+- [x] Add paginated and incremental read sync: Gmail history IDs, Drive change tokens, Calendar sync tokens, and full-resync recovery on expired cursors. Keep each source's data and provenance owner-scoped. Provider-shaped tests cover cursor behavior; live incremental changes remain unverified.
+- [x] Build owner-scoped cross-source search with citations, account labels, freshness, and metadata/content separation. Evaluate retrieval across at least two providers and local files. Google Gmail/Drive identities are provider-checked during sync; Calendar and optional source labels remain unverified.
+- [x] Enforce policy at the new Phase 4 capability boundary. Scope filesystem access to approved roots and account credentials to specific read or write operations. Existing Phase 0 mock actions are outside this new boundary and remain prototype-only.
+- [x] Persist approvals tied to the user, action parameters, and expiration. Enforce them for destructive actions and test denial, expiry, and replay.
+- [x] Introduce scoped filesystem tools, Docker-isolated terminal execution, and temporary-profile browser sessions. Bound runtime, resource use, and output. Browser sessions are profile-isolated, not network-sandboxed.
+- [x] Add stdio MCP server registration and trust controls. Treat web pages, files, integration responses, and MCP outputs as untrusted data. Trusted MCP executables still have host-user privileges.
+- [x] Extend metadata-only read workflows for meeting preparation and follow-up queues; add fixture-tested Notion, Todoist, Slack, and Microsoft Graph read adapters according to `INTEGRATIONS.md`.
+- [ ] Verify Notion, Todoist, Slack, and Microsoft Graph scopes and behavior with live owner accounts before describing them as live-supported integrations.
+- [x] Add narrow Gmail send, Calendar event create, and Drive folder create actions after exact approval and idempotency. Ambiguous outcomes stop retries; Calendar/Drive can be reconciled by reads, Gmail requires manual review. Provider-shaped tests pass; write scopes are not live-connected.
+- [ ] Verify Google write scopes and one explicitly approved live action for each write capability, when the owner chooses to connect those scopes.
+- [x] Add durable scheduled jobs with time-zone handling, cancellation, missed-run behavior, and duplicate-run prevention.
+- [x] Add selective delegation within the shared runtime. Bound delegated read capabilities and inference budgets, and track child task progress and cancellation.
+- [x] Test approval bypass attempts, workspace escape attempts, untrusted tool content, and retries after an ambiguous external write.
 
-**Done when** scheduled and delegated workflows obey permissions and budgets, and execution history records each action and approval.
+**Core done when** scheduled and delegated workflows obey permissions and budgets, and execution history records each action and approval. This is covered by credential-free tests and a fictional Aurora launch API scenario. Live optional-account and Google-write verification remain open above.
 
 ## Phase 5 — Build the control center
 

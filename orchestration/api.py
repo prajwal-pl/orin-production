@@ -4,13 +4,21 @@ import asyncio
 import json
 import os
 import secrets
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orchestration.runtime import Runtime
 from orchestration.integrations import SOURCES, connected_sources
+from orchestration.integrations import authorize_source
+from orchestration.google_oauth import has_refresh_token, refreshed_access_token
+from orchestration.google_writes import WRITE_SOURCES
+from orchestration.local_tools import ScopedFileSystem, ScopedTerminal, IsolatedBrowser
+from orchestration.policy import PolicyDenied
+from orchestration.integrations import MissingCredential
 
 app = FastAPI(title="Orin", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -41,6 +49,90 @@ class BriefingSkillRequest(BaseModel):
 
 class TaskCorrection(BaseModel):
     content: str
+
+
+class GrantRequest(BaseModel):
+    capability: str
+    operation: str
+
+
+class RootGrantRequest(BaseModel):
+    path: str
+    operation: str = "read"
+
+
+class ActionRequest(BaseModel):
+    capability: str
+    parameters: dict
+    idempotency_key: str
+
+
+class ScheduleRequest(BaseModel):
+    session_id: str
+    request: str
+    recurrence: str
+    timezone: str = "UTC"
+    run_at: datetime | None = None
+    hour: int | None = None
+    minute: int | None = None
+    misfire_policy: str = "run_once"
+
+
+class DelegationRequest(BaseModel):
+    parent_task_id: str
+    request: str
+    allowed_capabilities: list[str]
+    max_model_calls: int = 0
+    max_model_tokens: int = 0
+
+
+class SyncRequest(BaseModel):
+    account_id: str
+
+
+class LocalIndexRequest(BaseModel):
+    root: str
+    relative_paths: list[str]
+
+
+class FileReadRequest(BaseModel):
+    path: str
+
+
+class FileWriteRequest(BaseModel):
+    path: str
+    content: str
+    approval_id: str | None = None
+
+
+class TerminalRequest(BaseModel):
+    argv: list[str]
+    root: str
+    approval_id: str | None = None
+
+
+class BrowserRequest(BaseModel):
+    url: str
+
+
+class MCPServerRequest(BaseModel):
+    server_id: str
+    endpoint: str
+    allowed_tools: list[str]
+
+
+class MCPCallRequest(BaseModel):
+    arguments: dict = Field(default_factory=dict)
+
+
+def phase4_error(error: Exception) -> HTTPException:
+    if isinstance(error, KeyError):
+        return HTTPException(404, "Resource not found")
+    if isinstance(error, (PolicyDenied, PermissionError)):
+        return HTTPException(403, str(error))
+    if isinstance(error, (ValueError, MissingCredential)):
+        return HTTPException(400, str(error))
+    return HTTPException(502, "Capability failed; inspect its audit status")
 
 
 def authorized_owner(authorization: str | None = Header(default=None),
@@ -288,3 +380,323 @@ async def stream_events(task_id: str, after: int = 0, owner: str = Depends(autho
             await asyncio.sleep(1)
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+@app.post("/policy/grants")
+def grant_capability(body: GrantRequest, owner: str = Depends(authorized_owner),
+                     service: Runtime = Depends(runtime)):
+    known_read = {item.capability for item in SOURCES.values()} | {"filesystem", "browser", "search.content"}
+    known_write = set(WRITE_SOURCES) | {"filesystem", "terminal"}
+    if (body.operation == "read" and (body.capability in known_read or body.capability.startswith("mcp.")) or
+            body.operation == "write" and body.capability in known_write):
+        service.policy.grant(owner, body.capability, body.operation)
+        return {"capability": body.capability, "operation": body.operation, "granted": True}
+    raise HTTPException(400, "Unknown capability or operation")
+
+
+@app.post("/policy/roots")
+def grant_filesystem_root(body: RootGrantRequest, owner: str = Depends(authorized_owner),
+                          service: Runtime = Depends(runtime)):
+    try:
+        root = service.policy.grant_root(owner, Path(body.path), body.operation)
+        return {"path": str(root), "operation": body.operation}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.get("/policy/audit")
+def policy_audit(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.policy.audit_for_owner(owner)
+
+
+@app.get("/approvals")
+def approvals(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.policy.list_approvals(owner)
+
+
+@app.post("/approvals/{approval_id}/approve")
+def approve(approval_id: str, owner: str = Depends(authorized_owner),
+            service: Runtime = Depends(runtime)):
+    try:
+        return service.policy.approve(owner, approval_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/approvals/{approval_id}/deny")
+def deny(approval_id: str, owner: str = Depends(authorized_owner),
+         service: Runtime = Depends(runtime)):
+    try:
+        return service.policy.deny(owner, approval_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/actions")
+def prepare_action(body: ActionRequest, owner: str = Depends(authorized_owner),
+                   service: Runtime = Depends(runtime)):
+    try:
+        return service.actions.prepare(owner, body.capability, body.parameters, body.idempotency_key)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.get("/actions")
+def list_actions(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.actions.list(owner)
+
+
+@app.get("/actions/{action_id}")
+def get_action(action_id: str, owner: str = Depends(authorized_owner),
+               service: Runtime = Depends(runtime)):
+    action = service.actions.get(owner, action_id)
+    if action is None:
+        raise HTTPException(404, "Action not found")
+    return action
+
+
+@app.post("/actions/{action_id}/run")
+async def run_action(action_id: str, owner: str = Depends(authorized_owner),
+                     service: Runtime = Depends(runtime)):
+    try:
+        return await service.actions.execute(owner, action_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/actions/{action_id}/reconcile")
+async def reconcile_action(action_id: str, owner: str = Depends(authorized_owner),
+                           service: Runtime = Depends(runtime)):
+    try:
+        return await service.actions.reconcile(owner, action_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/sync/{source}")
+async def sync_source(source: str, body: SyncRequest, owner: str = Depends(authorized_owner),
+                      service: Runtime = Depends(runtime)):
+    if source not in {"gmail", "drive", "calendar"}:
+        raise HTTPException(400, "Only Google read sources support incremental sync")
+    try:
+        authorize_source(owner, source)
+        token = os.getenv(SOURCES[source].token_env, "").strip()
+        if not token:
+            if not has_refresh_token(owner, source):
+                raise MissingCredential(f"{source} is not connected")
+            token = await refreshed_access_token(owner, source)
+        result = await service.sync_engine.sync(owner, source, body.account_id, token)
+        return result.__dict__
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.get("/search")
+def search_sources(q: str, include_content: bool = False, account_id: str | None = None,
+                   sources: str | None = None, owner: str = Depends(authorized_owner),
+                   service: Runtime = Depends(runtime)):
+    try:
+        if include_content:
+            service.policy.authorize(owner, "search.content", "read")
+        selected = set(sources.split(",")) if sources else None
+        return [hit.__dict__ for hit in service.search.search(
+            owner, q, include_content=include_content, account_id=account_id, sources=selected)]
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/search/index-local")
+def index_local(body: LocalIndexRequest, owner: str = Depends(authorized_owner),
+                service: Runtime = Depends(runtime)):
+    try:
+        root = Path(body.root).resolve(strict=True)
+        if root not in service.policy.roots(owner, "read"):
+            raise PolicyDenied("Local index root is not approved")
+        service.policy.authorize(owner, "filesystem", "read")
+        count = service.search.index_local_files(owner, root, body.relative_paths)
+        return {"indexed": count}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/schedules")
+def create_schedule(body: ScheduleRequest, owner: str = Depends(authorized_owner),
+                    service: Runtime = Depends(runtime)):
+    try:
+        if body.recurrence == "once" and body.run_at:
+            return service.schedules.create_once(owner, body.session_id, body.request, body.run_at,
+                                                 timezone_name=body.timezone,
+                                                 misfire_policy=body.misfire_policy)
+        if body.recurrence == "daily" and body.hour is not None and body.minute is not None:
+            return service.schedules.create_daily(owner, body.session_id, body.request,
+                                                  body.timezone, body.hour, body.minute,
+                                                  misfire_policy=body.misfire_policy)
+        raise ValueError("A once schedule needs run_at; daily needs hour and minute")
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.get("/schedules")
+def list_schedules(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.schedules.list(owner)
+
+
+@app.get("/schedules/{job_id}/runs")
+def schedule_runs(job_id: str, owner: str = Depends(authorized_owner),
+                  service: Runtime = Depends(runtime)):
+    try:
+        return service.schedules.runs(owner, job_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/schedules/{job_id}/cancel")
+def cancel_schedule(job_id: str, owner: str = Depends(authorized_owner),
+                    service: Runtime = Depends(runtime)):
+    return {"cancelled": service.schedules.cancel(owner, job_id)}
+
+
+@app.post("/delegations")
+def create_delegation(body: DelegationRequest, owner: str = Depends(authorized_owner),
+                      service: Runtime = Depends(runtime)):
+    try:
+        spec = service.create_delegation(owner, body.parent_task_id, body.request,
+                                         set(body.allowed_capabilities), body.max_model_calls,
+                                         body.max_model_tokens)
+        return spec.__dict__ | {"allowed_capabilities": sorted(spec.allowed_capabilities)}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.get("/tasks/{task_id}/delegations")
+def delegation_progress(task_id: str, owner: str = Depends(authorized_owner),
+                        service: Runtime = Depends(runtime)):
+    if service.store.get_task(task_id, owner) is None:
+        raise HTTPException(404, "Task not found")
+    return service.delegations.progress(owner, task_id)
+
+
+@app.post("/delegations/{child_id}/run")
+async def run_delegation(child_id: str, owner: str = Depends(authorized_owner),
+                         service: Runtime = Depends(runtime)):
+    try:
+        return await service.run_delegation(owner, child_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/delegations/{child_id}/cancel")
+def cancel_delegation(child_id: str, owner: str = Depends(authorized_owner),
+                      service: Runtime = Depends(runtime)):
+    child = service.cancel_delegation(owner, child_id)
+    if child is None:
+        raise HTTPException(404, "Delegation not found")
+    return child
+
+
+@app.post("/tools/files/read")
+def read_file(body: FileReadRequest, owner: str = Depends(authorized_owner),
+              service: Runtime = Depends(runtime)):
+    try:
+        content = ScopedFileSystem(service.policy, owner).read(Path(body.path))
+        return {"content": content.decode("utf-8", errors="replace"), "untrusted": True}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/tools/files/prepare-write")
+def prepare_file_write(body: FileWriteRequest, owner: str = Depends(authorized_owner),
+                       service: Runtime = Depends(runtime)):
+    content = body.content.encode("utf-8")
+    parameters = ScopedFileSystem.write_parameters(Path(body.path), content)
+    try:
+        return service.policy.request_approval(owner, "filesystem", parameters)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/tools/files/write-new")
+def write_file(body: FileWriteRequest, owner: str = Depends(authorized_owner),
+               service: Runtime = Depends(runtime)):
+    if not body.approval_id:
+        raise HTTPException(400, "approval_id is required")
+    try:
+        ScopedFileSystem(service.policy, owner).write_new(
+            Path(body.path), body.content.encode("utf-8"), body.approval_id)
+        return {"created": True}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/tools/terminal/prepare")
+def prepare_terminal(body: TerminalRequest, owner: str = Depends(authorized_owner),
+                     service: Runtime = Depends(runtime)):
+    try:
+        parameters = ScopedTerminal.run_parameters(body.argv, Path(body.root))
+        return service.policy.request_approval(owner, "terminal", parameters)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/tools/terminal/run")
+def run_terminal(body: TerminalRequest, owner: str = Depends(authorized_owner),
+                 service: Runtime = Depends(runtime)):
+    if not body.approval_id:
+        raise HTTPException(400, "approval_id is required")
+    try:
+        return ScopedTerminal(service.policy, owner).run(body.argv, Path(body.root), body.approval_id).__dict__
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/tools/browser/fetch")
+def browser_fetch(body: BrowserRequest, owner: str = Depends(authorized_owner),
+                  service: Runtime = Depends(runtime)):
+    try:
+        return IsolatedBrowser(service.policy, owner).fetch(body.url).__dict__
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/mcp/servers")
+def register_mcp(body: MCPServerRequest, owner: str = Depends(authorized_owner),
+                 service: Runtime = Depends(runtime)):
+    try:
+        return service.mcp.register(owner, body.server_id, body.endpoint, body.allowed_tools)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/mcp/servers/{server_id}/trust")
+def trust_mcp(server_id: str, owner: str = Depends(authorized_owner),
+              service: Runtime = Depends(runtime)):
+    try:
+        return service.mcp.trust(owner, server_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/mcp/servers/{server_id}/revoke")
+def revoke_mcp(server_id: str, owner: str = Depends(authorized_owner),
+               service: Runtime = Depends(runtime)):
+    service.mcp.revoke(owner, server_id)
+    return {"revoked": True}
+
+
+@app.get("/mcp/servers/{server_id}/tools")
+async def mcp_tools(server_id: str, owner: str = Depends(authorized_owner),
+                    service: Runtime = Depends(runtime)):
+    try:
+        return {"tools": await service.mcp.list_tools(owner, server_id)}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/mcp/servers/{server_id}/tools/{tool}")
+async def mcp_call(server_id: str, tool: str, body: MCPCallRequest,
+                   owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    try:
+        observation = await service.mcp.call(owner, server_id, tool, body.arguments)
+        return observation.__dict__
+    except Exception as error:
+        raise phase4_error(error) from None

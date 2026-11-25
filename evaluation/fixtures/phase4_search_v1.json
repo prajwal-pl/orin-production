@@ -1,0 +1,32 @@
+{
+  "version": "phase4-search-v1",
+  "scenario": "A user asks Orin what to review before an Aurora planning meeting",
+  "owner": "alice",
+  "query": "Aurora planning",
+  "evidence": [
+    {
+      "source": "gmail", "account_id": "alice@example.com", "source_id": "mail-aurora",
+      "title": "Aurora planning questions", "detail": "From Maya",
+      "url": "https://mail.google.com/mail/u/0/#all/mail-aurora",
+      "occurred_at": "2026-11-25T08:00:00Z", "fetched_at": "2026-11-25T09:00:00Z",
+      "content_kind": "metadata"
+    },
+    {
+      "source": "drive", "account_id": "alice@example.com", "source_id": "file-aurora",
+      "title": "Aurora planning brief", "detail": "Google Doc",
+      "url": "https://drive.google.com/open?id=file-aurora",
+      "occurred_at": "2026-11-24T14:00:00Z", "fetched_at": "2026-11-25T09:01:00Z",
+      "content_kind": "metadata"
+    },
+    {
+      "source": "calendar", "account_id": "alice@example.com", "source_id": "event-aurora",
+      "title": "Aurora planning meeting", "detail": "Room 7",
+      "url": "https://calendar.google.com/calendar/event?eid=event-aurora",
+      "occurred_at": "2026-11-25T12:00:00Z", "fetched_at": "2026-11-25T09:02:00Z",
+      "content_kind": "metadata"
+    }
+  ],
+  "local_note": "Aurora planning checklist: ask Maya whether the rollout date is approved.",
+  "expected_metadata_ids": ["mail-aurora", "file-aurora", "event-aurora"],
+  "expected_with_content_sources": ["gmail", "drive", "calendar", "filesystem"]
+}

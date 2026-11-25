@@ -10,8 +10,8 @@ skill path.
 | Workflow | Sources | Value | Current status |
 |---|---|---|---|
 | Daily briefing | Calendar events, unread Gmail headers, recent Drive files, GitHub notifications | One view of today's commitments and changes, with source links and missing-source status | Shared read-only path and live Google OAuth reads verified |
-| Meeting preparation | Calendar attendee/context, recent mail thread, matching Drive/Notion docs | Find the brief and open questions before a meeting | Planned; requires scoped search and entity linking |
-| Follow-up queue | Mail requiring reply, assigned GitHub reviews, Todoist tasks, calendar deadlines | Turn scattered obligations into a reviewable list | Planned; no external writes yet |
+| Meeting preparation | Calendar event metadata, matching Gmail headers, Drive/Notion titles | Find likely briefs and open questions before a meeting | Deterministic read workflow and fixture-tested cross-source search; full thread/content linking remains future work |
+| Follow-up queue | Gmail headers, GitHub notifications, Calendar deadlines | Turn scattered obligations into a reviewable list | Deterministic metadata-only review queue; Todoist/Slack content is excluded from this procedure |
 | Project pulse | GitHub activity, Drive documents, Notion pages, Slack decisions | Summarize changes with provenance and detect stale work | Planned; would need per-source sync and permissions |
 | Availability planning | Calendar free/busy, task deadlines | Suggest open slots without reading event descriptions | Planned; Calendar has a narrower free/busy capability |
 | Weekly review | Completed tasks, user corrections, calendar outcomes, project notes | Evaluate recurring workflows and propose bounded skill changes | Planned beyond the current briefing-order and GitHub-priority skills |
@@ -29,12 +29,12 @@ from another source; the skill controls the order of each round.
 
 | Priority | Feature | Concrete behavior |
 |---|---|---|
-| Next | Unified search with citations | Search permitted mail headers, file metadata, event titles, notes, and local files; return source links, account identity, and freshness for each hit. Keep content retrieval separate from metadata search. |
-| Next | Meeting preparation | Resolve an event to likely documents, recent messages, people, and open questions; show why each item was selected. Start read-only. |
-| Next | Follow-up review | Detect requests and deadlines across mail, GitHub, task manager, and calendar; ask the owner to confirm before creating tasks or messages. |
+| Implemented core | Unified search with citations | Search owner-scoped source metadata and explicitly indexed local text; return source links, account labels, and fetch time. Content results require a separate grant. |
+| Implemented core | Meeting preparation | Pick a likely event and related metadata by request terms; show cited items and possible questions. Rich entity/thread linking remains future work. |
+| Implemented core | Follow-up review | Flag likely follow-ups from metadata for owner review; no external task or message is created. |
 | Next | Connection and permission dashboard | Show which account, scope, owner grant, token expiry, and last successful sync apply to each capability. Make disconnected sources visible in task results. |
-| Later | Scheduled briefings and watchlists | Run bounded recurring tasks with timezone, missed-run behavior, deduplication, and notification preferences. |
-| Later | Approval queue and draft actions | Prepare a proposed email, event, or task with a diff and idempotency key; execute only after explicit approval. |
+| Implemented core | Scheduled briefings | Run local one-time or daily tasks with timezone, missed-run behavior, and deduplication. Watchlists and notifications remain future work. |
+| Implemented core | Approval queue and narrow actions | Prepare Gmail send, Calendar event, or Drive folder actions with exact parameters and an idempotency key; execute after owner approval. Live write scopes are not connected yet. |
 | Later | Experience evaluation | Track whether retrieval, priorities, and skills improved recurring tasks using user corrections and task outcomes; allow rollback. |
 
 This order keeps the project focused on cross-service outcomes rather than a
@@ -65,28 +65,37 @@ Local disconnect removes one stored token. Google-side revocation invalidates
 all grants to this project for the account, so Orin clears all local Google
 credentials after a successful revoke.
 
-## Next connector work
+## Phase 4 connector status and next verification
 
-1. Add paginated and incremental read sync with durable cursors. Gmail uses
+1. Paginated incremental Google metadata sync is implemented with durable
+   owner/account cursors and credential-free provider tests. Gmail uses
    `historyId` and requires a full sync if history expires; Drive uses change
    page tokens; Calendar uses sync tokens and can require a full sync after 410.
+   Live incremental sync on an actual changing account remains to be checked.
    [Gmail sync](https://developers.google.com/workspace/gmail/api/guides/sync),
    [Drive changes](https://developers.google.com/workspace/drive/api/guides/manage-changes),
    [Calendar sync](https://developers.google.com/workspace/calendar/api/guides/sync)
-2. Add search and link resolution for meeting preparation. Keep provenance and
-   access control on each retrieved item. Notion offers read-content
-   capabilities, Slack scopes distinguish channel listing from message history,
-   and Microsoft Graph has delegated permissions and delta queries.
+2. Owner-scoped search and metadata meeting preparation are implemented with
+   citations and an approved local text path. Notion, Todoist, Slack, and
+   Microsoft Graph have bounded read adapters with fixture tests but no live
+   account verification yet. Their account IDs are configured labels, not
+   provider-verified identities. Notion offers read-content capabilities,
+   Slack scopes distinguish channel listing from message history, and Microsoft
+   Graph has delegated permissions and delta queries.
    [Notion integration capabilities](https://www.notion.com/help/create-integrations-with-the-notion-api),
    [Slack history scopes](https://docs.slack.dev/messaging/retrieving-messages),
    [Microsoft Graph permissions](https://learn.microsoft.com/en-us/graph/permissions-overview),
    [Microsoft Graph delta](https://learn.microsoft.com/en-us/graph/delta-query-overview)
-3. Add task-manager reads before task writes. Todoist exposes `data:read` and
+3. Todoist task reads are implemented and fixture tested. Todoist exposes `data:read` and
    separates it from write and delete permissions; granted scopes may be
    narrower than requested. [Todoist API](https://developer.todoist.com/api/v1/)
-4. Gate writes at the capability boundary with approval, idempotency, and an
-   audit trail. MCP tools and remote skills must be treated as lower-trust
-   inputs; connected servers do not grant implicit local execution.
+4. Narrow Google writes use capability grants, exact approvals, idempotency,
+   and an audit trail. Ambiguous responses do not trigger another send/create;
+   Calendar and Drive have read-only reconciliation, while Gmail requires
+   manual Sent-mail review. Google write scopes and provider behavior still
+   need live verification. MCP tool text is tagged lower trust. A trusted stdio
+   MCP executable itself has host-user privileges, so only explicitly trusted
+   local programs should be registered.
    [MCP skills security](https://skills.extensions.modelcontextprotocol.io/specification/beta/skills)
 
 The portfolio demonstration can show the live four-source read briefing and a

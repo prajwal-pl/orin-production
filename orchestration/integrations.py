@@ -46,6 +46,18 @@ SOURCES = {
     "github": SourceSpec("github", "github.notifications.read", "GITHUB_TOKEN",
                          "ORIN_GITHUB_ALLOWED_USERS", "notifications",
                          "Unread GitHub notifications"),
+    "notion": SourceSpec("notion", "notion.pages.read", "ORIN_NOTION_TOKEN",
+                         "ORIN_NOTION_ALLOWED_USERS", "read_content",
+                         "Accessible Notion page titles"),
+    "todoist": SourceSpec("todoist", "todoist.tasks.read", "ORIN_TODOIST_TOKEN",
+                          "ORIN_TODOIST_ALLOWED_USERS", "data:read",
+                          "Active Todoist tasks"),
+    "slack": SourceSpec("slack", "slack.history.read", "ORIN_SLACK_TOKEN",
+                        "ORIN_SLACK_ALLOWED_USERS", "channels:history",
+                        "Recent messages in explicitly configured channels"),
+    "microsoft": SourceSpec("microsoft", "microsoft.mail.metadata.read", "ORIN_MICROSOFT_TOKEN",
+                            "ORIN_MICROSOFT_ALLOWED_USERS", "Mail.ReadBasic",
+                            "Recent Microsoft Graph mail metadata"),
 }
 
 
@@ -57,7 +69,7 @@ def connected_sources(owner: str) -> list[str]:
     return [key for key, source in SOURCES.items()
             if owner in allowed_users(source) and
             (os.getenv(source.token_env, "").strip() or
-             (key != "github" and has_refresh_token(owner, key)))]
+             (key in ("gmail", "drive", "calendar") and has_refresh_token(owner, key)))]
 
 
 def allowed_users(source: SourceSpec) -> set[str]:
@@ -177,9 +189,15 @@ FETCHERS: dict[str, Callable[[str], Awaitable[list[Evidence]]]] = {
 
 async def fetch_source(key: str, owner: str) -> list[dict]:
     authorize_source(owner, key)
-    if key not in FETCHERS:
+    if key == "github":
         raise ValueError("GitHub is handled by the existing notification adapter")
     token = os.getenv(SOURCES[key].token_env, "").strip()
+    if key not in FETCHERS:
+        if not token:
+            raise MissingCredential(f"{key} is not connected")
+        from orchestration.external_reads import fetch_external_source
+        account_id = os.getenv(f"ORIN_{key.upper()}_ACCOUNT_ID", "unverified")
+        return await fetch_external_source(key, token, account_id)
     if not token:
         if not has_refresh_token(owner, key):
             raise MissingCredential(f"{key} is not connected")

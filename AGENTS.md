@@ -55,7 +55,7 @@ Everything in the architecture follows from that sentence:
 
 ## 3. Current state
 
-Phase 3 builds on the shared task runtime used by Telegram, CLI, and a localhost
+Phase 4 builds on the shared task runtime used by Telegram, CLI, and a localhost
 FastAPI gateway. Tasks, sessions, messages, events, and capability executions are
 stored in SQLite. LangGraph checkpoints live in a companion SQLite file. A
 request mentioning GitHub notifications uses a real GET workflow that groups
@@ -90,11 +90,16 @@ inspection, correction, export, and deletion, plus skill inspection, activation,
 and usage metrics. The registry also holds a daily-briefing source-order skill;
 an explicit correction such as “calendar first” can propose a new version.
 
-General skill synthesis, neural embeddings, external writes, and the Hub/Node
-design remain future work. The
-GitHub notifications endpoint rejects fine-grained tokens, so
-the first workflow uses a classic token with the `notifications` scope. Runtime
-code makes GET requests only and gates the capability by owner ID.
+Phase 4 adds incremental Google metadata sync, cited search, deterministic
+meeting preparation and follow-up queues, owner-scoped policy and single-use
+approvals, scoped local tools, stdio MCP trust, durable schedules, and bounded
+child tasks. Narrow Gmail send, Calendar event create, and Drive folder create
+actions stop on ambiguous provider responses and have provider-shaped tests.
+The optional Notion, Todoist, Slack, and Microsoft Graph read adapters and
+Google write scopes have not been live verified. General skill synthesis,
+neural embeddings, and Hub/Node execution remain future work. The GitHub
+notifications endpoint rejects fine-grained tokens, so its read workflow uses
+a classic token with the `notifications` scope and makes GET requests only.
 
 ## 4. Repository map
 
@@ -109,6 +114,11 @@ code makes GET requests only and gates the capability by owner ID.
 | `orchestration/github.py` | Notification capability and summary |
 | `orchestration/integrations.py` | Read-only evidence contract and Google adapters |
 | `orchestration/google_oauth.py` | Desktop OAuth, OS credential storage, refresh, disconnect |
+| `orchestration/sync.py`, `orchestration/search.py` | Google metadata cursors and cited owner-scoped search |
+| `orchestration/policy.py`, `orchestration/actions.py` | Grants, approvals, audit, and durable external actions |
+| `orchestration/local_tools.py`, `orchestration/mcp_registry.py` | Scoped file/container/browser tools and trusted stdio MCP |
+| `orchestration/scheduler.py`, `orchestration/delegation.py` | Local schedules and bounded child tasks |
+| `orchestration/productivity.py`, `orchestration/external_reads.py` | Read procedures and optional source adapters |
 | `orchestration/graph.py` | Phase 0 mock graph topology |
 | `orchestration/nodes.py` | Prototype graph state and nodes |
 | `orchestration/agents.py` | Model configuration and backend contract |
@@ -132,12 +142,19 @@ has exited can be recovered. Checkpoints use the task ID as the thread ID.
 Task records and checkpoints are in separate SQLite files to avoid writer locks.
 
 Telegram is authorized before task submission. GitHub notifications, Gmail inbox
-headers, Drive metadata, Calendar events, and daily briefings use the shared
+headers, Drive metadata, Calendar events, optional source reads, meeting prep,
+follow-up queues, and daily briefings use the shared
 read graph. Each source has an owner grant and token setting. Daily briefings
 record partial failures and proceed with available sources. Other requests use
 the Phase 0 classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
 message IDs reuse a task. CLI and API call the same `Runtime` methods. The API
 requires a bearer token and a configured owner ID on every route.
+Phase 4 API routes use the same single-owner token. Google sync/search state,
+policy/approval state, actions, and schedules use companion SQLite files;
+delegations share the task database. The local schedule worker dispatches
+through `Runtime.submit` and `Runtime.run`. Google write actions require a
+separate scoped OAuth credential, a grant, an exact approval, and a stable
+idempotency key. Unknown outcomes are not sent again automatically.
 
 ### 5.1 Prototype graph state
 
@@ -179,7 +196,9 @@ local Ollama model can be set as `ORIN_FALLBACK_MODEL`. Run
 and rollback demonstration. Google read adapters use independent desktop OAuth
 grants with refresh tokens in the OS credential store and matching
 `ORIN_*_ALLOWED_USERS` grants. Short-lived environment access tokens remain
-overrides. See `README.md` and `INTEGRATIONS.md` for setup and scopes.
+overrides. Run `uv run python -m evaluation.phase4_search` for the synthetic
+cross-source search fixture and `uv run python -m orchestration.schedule_worker`
+to dispatch due jobs. See `README.md` and `INTEGRATIONS.md` for setup and scopes.
 
 ---
 
@@ -336,7 +355,7 @@ write scopes independently.
 | **1. Foundation** | FastAPI, durable LangGraph runtime, provider abstraction, capability registry, SQLite, sessions, streaming | Implemented; live GitHub and Telegram smoke checks passed on 2026-11-25 |
 | **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Implemented; live cloud/local model and GitHub/Telegram checks passed |
 | **3. Adaptive learning** | Owner-scoped memory, GitHub and cross-source briefing skills, evaluator, rollback | Implemented and credential-free end-to-end tested |
-| **4. Autonomy** | Filesystem, terminal, browser, MCP, subagents, scheduler, approvals | Not started |
+| **4. Autonomy** | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes | Core implemented and credential-free tested; optional account and live write verification pending |
 | **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization, memory/skill/model management | Not started |
 | **6. Hardening** | Benchmarks, recovery tests, security tests, migrations, backup/restore, installer | Not started |
 | **7. Distributed** | Hub, Node, capability routing, selective sync | Not started |
@@ -361,7 +380,9 @@ Do not start with 15 integrations, six agents, and three frontends.
   operation. The required classic token has broader permissions than this code
   uses because GitHub's endpoint rejects fine-grained tokens.
 - Gmail inbox headers, Drive metadata, and Calendar event reads passed live
-  account checks on 2026-11-25. Other GitHub/Gmail actions remain mock executions.
+  account checks on 2026-11-25. Optional source reads and narrow Google writes
+  have only credential-free provider tests. Other GitHub/Gmail requests remain
+  mock executions.
 - Google uses desktop OAuth with PKCE, independent scopes and OS credential
   storage. The External Testing refresh tokens expire after seven days. The
   capability API reports local configuration, not current provider acceptance.
@@ -372,6 +393,10 @@ Do not start with 15 integrations, six agents, and three frontends.
   neural embeddings and approximate nearest-neighbor search remain future work.
 - Provider quota discovery and distributed execution remain future work.
   Unknown quota remains explicit in model records.
+- Phase 4 browser reads use a temporary profile and public-HTTPS precheck, but
+  do not have a network sandbox. Trusted stdio MCP executables have host-user
+  privileges. Calendar and optional source account labels are not verified by
+  the provider. Existing Phase 0 mock actions do not pass through Phase 4 policy.
 - Python 3.14 remains the target. The installed LangChain stack emits Pydantic
   V1 compatibility warnings during tests.
 - A Telegram reply rejected by Telegram cannot be delivered. The bot logs a
@@ -440,9 +465,9 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Continue Phase 4 in `TODO.md` with policy enforcement, incremental sync, and
-cross-source search. Real external writes still need idempotency and approval
-controls.
+Verify optional read adapters and Google write scopes with live owner accounts
+when connected. Then continue Phase 5 on the existing runtime; do not describe
+fixture-only integrations as live supported.
 
 ---
 
