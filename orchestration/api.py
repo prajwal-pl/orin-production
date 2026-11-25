@@ -12,7 +12,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from orchestration.google_oauth import has_refresh_token, refreshed_access_token
+from orchestration.google_oauth import disconnect as disconnect_google, has_refresh_token, refreshed_access_token
 from orchestration.google_writes import WRITE_SOURCES
 from orchestration.integrations import MissingCredential, SOURCES, authorize_source, connected_sources
 from orchestration.local_tools import IsolatedBrowser, ScopedFileSystem, ScopedTerminal
@@ -244,13 +244,36 @@ def list_models(owner: str = Depends(authorized_owner), service: Runtime = Depen
     return service.store.list_model_health()
 
 
+@app.get("/usage")
+def usage_summary(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.store.usage_summary(owner)
+
+
 @app.get("/capabilities")
-def list_capabilities(owner: str = Depends(authorized_owner)):
+def list_capabilities(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
     connected = set(connected_sources(owner))
+    successful = service.store.last_successful_capabilities(owner)
     return [{"key": source.key, "capability": source.capability,
              "description": source.description, "oauth_scope": source.oauth_scope,
-             "read_only": source.read_only, "configured": source.key in connected}
+             "read_only": source.read_only, "configured": source.key in connected,
+             "auth_method": ("environment" if os.getenv(source.token_env, "").strip()
+                             else "oauth" if source.key in {"gmail", "drive", "calendar"}
+                             and has_refresh_token(owner, source.key) else None),
+             "last_success_at": successful.get(source.capability)}
             for source in SOURCES.values()]
+
+
+@app.post("/connections/{source}/disconnect")
+async def disconnect_source(source: str, owner: str = Depends(authorized_owner)):
+    if source not in {"gmail", "drive", "calendar"}:
+        raise HTTPException(404, "OAuth connection not found")
+    if os.getenv(SOURCES[source].token_env, "").strip():
+        raise HTTPException(409, "This source uses an environment token; remove it from local configuration")
+    try:
+        await disconnect_google(owner, source)
+    except Exception:
+        raise HTTPException(502, "Could not remove the local credential") from None
+    return {"source": source, "disconnected": True}
 
 
 @app.post("/memories")

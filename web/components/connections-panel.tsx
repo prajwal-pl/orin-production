@@ -1,15 +1,51 @@
+"use client";
+
+import { useState } from "react";
 import { Info, LockKeyhole, Plug2 } from "lucide-react";
+import { OrinClient } from "@/lib/api";
 import type { Capability } from "@/lib/types";
 import { ServiceMark, serviceName } from "./service-mark";
-import { EmptyState, SectionHeading, StatusBadge } from "./ui";
+import { EmptyState, Notice, SectionHeading, StatusBadge } from "./ui";
+import { formatDate } from "@/lib/format";
 
 export function ConnectionsPanel({
   capabilities,
+  client,
+  refresh,
 }: {
   capabilities: Capability[];
+  client: OrinClient;
+  refresh: () => Promise<void>;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const configured = capabilities.filter((item) => item.configured);
   const remaining = capabilities.filter((item) => !item.configured);
+
+  async function disconnect(source: Capability) {
+    if (
+      !window.confirm(
+        `Remove the local ${serviceName(source.key)} OAuth credential? Existing task history stays available.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.post(
+        `/connections/${encodeURIComponent(source.key)}/disconnect`,
+      );
+      await refresh();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not disconnect source",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const rows = (sources: Capability[]) =>
     sources.map((source) => (
@@ -18,6 +54,19 @@ export function ConnectionsPanel({
         <div className="source-main">
           <strong>{serviceName(source.key)}</strong>
           <small>{source.description}</small>
+          {source.auth_method && (
+            <small>
+              Credential:{" "}
+              {source.auth_method === "oauth"
+                ? "OS credential store"
+                : "local environment"}
+            </small>
+          )}
+          {source.last_success_at && (
+            <small>
+              Last successful read {formatDate(source.last_success_at)}
+            </small>
+          )}
         </div>
         <span className="source-scope">
           <LockKeyhole size={14} />{" "}
@@ -26,6 +75,15 @@ export function ConnectionsPanel({
         <StatusBadge
           status={source.configured ? "configured" : "not configured"}
         />
+        {source.auth_method === "oauth" && source.configured && (
+          <button
+            className="button button-small"
+            disabled={busy}
+            onClick={() => void disconnect(source)}
+          >
+            Disconnect
+          </button>
+        )}
       </div>
     ));
 
@@ -50,6 +108,7 @@ export function ConnectionsPanel({
           runs.
         </span>
       </div>
+      {error && <Notice kind="error">{error}</Notice>}
       <p className="setup-hint">
         Need to add a source? Connection setup is currently done from the Orin
         project terminal. The README lists each OAuth and token command.

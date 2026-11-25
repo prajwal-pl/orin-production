@@ -7,6 +7,7 @@ import {
   getBrowserSession,
   logoutBrowser,
   OrinClient,
+  pairBrowser,
 } from "@/lib/api";
 import { useDashboard } from "@/lib/use-dashboard";
 import type { BrowserSession, Task } from "@/lib/types";
@@ -18,6 +19,8 @@ import { PairScreen } from "./pair-screen";
 import { SchedulesPanel } from "./schedules-panel";
 import { Shell, type View } from "./shell";
 import { SystemPanel } from "./system-panel";
+import { MemoryPanel } from "./memory-panel";
+import { SkillsPanel } from "./skills-panel";
 import { TasksPanel } from "./tasks-panel";
 import { Notice } from "./ui";
 
@@ -37,11 +40,25 @@ export function ControlCenter() {
 
   useEffect(() => {
     let current = true;
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const desktopPairCode = fragment.get("pair");
+    if (desktopPairCode) {
+      // A one-time code is delivered through the local desktop webview only.
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     Promise.allSettled([getBrowserSession(), getBootstrap()]).then(
-      ([sessionResult, bootstrapResult]) => {
+      async ([sessionResult, bootstrapResult]) => {
         if (!current) return;
-        if (sessionResult.status === "fulfilled")
+        if (sessionResult.status === "fulfilled") {
           setSession(sessionResult.value);
+        } else if (desktopPairCode) {
+          try {
+            const paired = await pairBrowser(desktopPairCode);
+            if (current) setSession(paired);
+          } catch {
+            // Pairing errors remain visible through the manual pairing screen.
+          }
+        }
         if (bootstrapResult.status === "fulfilled")
           setPairingAvailable(bootstrapResult.value.pairing_available);
         setBooting(false);
@@ -166,7 +183,11 @@ export function ControlCenter() {
         />
       )}
       {!loading && view === "connections" && (
-        <ConnectionsPanel capabilities={data.capabilities} />
+        <ConnectionsPanel
+          client={client}
+          capabilities={data.capabilities}
+          refresh={refresh}
+        />
       )}
       {!loading && view === "approvals" && (
         <ApprovalsPanel
@@ -185,7 +206,27 @@ export function ControlCenter() {
         />
       )}
       {!loading && view === "system" && (
-        <SystemPanel models={data.models} sessions={data.sessions} />
+        <SystemPanel
+          client={client}
+          models={data.models}
+          sessions={data.sessions}
+          usage={data.usage}
+        />
+      )}
+      {!loading && view === "memory" && (
+        <MemoryPanel
+          client={client}
+          memories={data.memories}
+          refresh={refresh}
+        />
+      )}
+      {!loading && view === "skills" && (
+        <SkillsPanel
+          client={client}
+          skills={data.skills}
+          metrics={data.skillMetrics}
+          refresh={refresh}
+        />
       )}
     </Shell>
   );

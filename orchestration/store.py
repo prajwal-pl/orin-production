@@ -5,8 +5,12 @@ import os
 import sqlite3
 import re
 import time
+import threading
 from pathlib import Path
 from uuid import uuid4
+
+
+_MIGRATION_LOCK = threading.Lock()
 
 
 def database_path() -> Path:
@@ -19,7 +23,8 @@ class TaskStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
         os.close(descriptor)
-        self.migrate()
+        with _MIGRATION_LOCK:
+            self.migrate()
 
     def connect(self):
         connection = sqlite3.connect(self.path, timeout=30)
@@ -210,6 +215,26 @@ class TaskStore:
         with self.connect() as db:
             return [dict(row) for row in db.execute(
                 "SELECT * FROM sessions WHERE owner=? ORDER BY created_at DESC", (owner,))]
+
+    def usage_summary(self, owner: str) -> list[dict]:
+        """Observed model usage for this owner's tasks; unknown token counts stay null."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT u.model, COUNT(*) AS calls,
+                SUM(u.success) AS successful_calls,
+                SUM(u.input_tokens) AS input_tokens,
+                SUM(u.output_tokens) AS output_tokens,
+                AVG(u.latency_ms) AS average_latency_ms,
+                MAX(u.created_at) AS last_used_at
+                FROM usage_records u JOIN tasks t ON t.id=u.task_id
+                WHERE t.owner=? GROUP BY u.model ORDER BY calls DESC, u.model""", (owner,))
+            return [dict(row) for row in rows]
+
+    def last_successful_capabilities(self, owner: str) -> dict[str, str]:
+        with self.connect() as db:
+            rows = db.execute("""SELECT e.capability, MAX(e.created_at) AS last_success_at
+                FROM executions e JOIN tasks t ON t.id=e.task_id
+                WHERE t.owner=? AND e.status='completed' GROUP BY e.capability""", (owner,))
+            return {row["capability"]: row["last_success_at"] for row in rows}
 
     def messages(self, owner: str, session_id: str) -> list[dict] | None:
         with self.connect() as db:

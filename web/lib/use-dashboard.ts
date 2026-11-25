@@ -8,6 +8,10 @@ import type {
   Capability,
   DashboardData,
   ModelHealth,
+  MemoryRecord,
+  SkillVersion,
+  SkillMetric,
+  UsageSummary,
   Schedule,
   Session,
   Task,
@@ -21,6 +25,10 @@ const empty: DashboardData = {
   approvals: [],
   actions: [],
   schedules: [],
+  memories: [],
+  skills: [],
+  skillMetrics: [],
+  usage: [],
 };
 
 export function useDashboard(client: OrinClient | null) {
@@ -41,6 +49,10 @@ export function useDashboard(client: OrinClient | null) {
         approvals,
         actions,
         schedules,
+        memories,
+        skills,
+        skillMetrics,
+        usage,
       ] = await Promise.all([
         client.get<Task[]>("/tasks"),
         client.get<Session[]>("/sessions"),
@@ -49,6 +61,10 @@ export function useDashboard(client: OrinClient | null) {
         client.get<Approval[]>("/approvals"),
         client.get<Action[]>("/actions"),
         client.get<Schedule[]>("/schedules"),
+        client.get<MemoryRecord[]>("/memories"),
+        client.get<SkillVersion[]>("/skills"),
+        client.get<SkillMetric[]>("/skills/metrics"),
+        client.get<UsageSummary[]>("/usage"),
       ]);
       setData({
         tasks,
@@ -58,6 +74,10 @@ export function useDashboard(client: OrinClient | null) {
         approvals,
         actions,
         schedules,
+        memories,
+        skills,
+        skillMetrics,
+        usage,
       });
       setError(null);
       setUnauthorized(false);

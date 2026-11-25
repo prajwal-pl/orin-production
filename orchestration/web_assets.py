@@ -1,13 +1,15 @@
 """Serve the exported Next.js control center from the local FastAPI process."""
 
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 
-WEB_OUTPUT = Path(__file__).resolve().parents[1] / "web" / "out"
+WEB_OUTPUT = (Path(sys._MEIPASS) if getattr(sys, "frozen", False)
+              else Path(__file__).resolve().parents[1]) / "web" / "out"
 
 
 def attach_web_assets(app: FastAPI) -> None:

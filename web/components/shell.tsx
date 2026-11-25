@@ -6,6 +6,8 @@ import {
   Command,
   LayoutGrid,
   ListChecks,
+  BookOpenText,
+  Sparkles,
   LogOut,
   Plug2,
   RefreshCw,
@@ -18,7 +20,14 @@ import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
 
 export type View =
-  "overview" | "tasks" | "connections" | "approvals" | "schedules" | "system";
+  | "overview"
+  | "tasks"
+  | "connections"
+  | "approvals"
+  | "schedules"
+  | "memory"
+  | "skills"
+  | "system";
 
 const navigation: {
   id: View;
@@ -41,6 +50,8 @@ const navigation: {
     group: "manage",
   },
   { id: "connections", label: "Connections", icon: Plug2, group: "manage" },
+  { id: "memory", label: "Memory", icon: BookOpenText, group: "manage" },
+  { id: "skills", label: "Skills", icon: Sparkles, group: "manage" },
   { id: "system", label: "System", icon: Settings2, group: "manage" },
 ];
 
@@ -51,6 +62,8 @@ const descriptions: Record<View, string> = {
   schedules: "Make recurring work predictable.",
   connections: "See which services this runtime can read.",
   system: "Observed model health and local sessions.",
+  memory: "Inspect, correct, and remove what Orin remembers.",
+  skills: "Review versions and choose the active procedure.",
 };
 
 export function Shell({

@@ -10,7 +10,7 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: Phase 5A local web control center implemented.**
+> **Status: Phase 5B desktop shell and management views implemented; channel adapters remain conditional.**
 > Telegram, CLI, a local API, and a browser UI share a SQLite-backed runtime. GitHub and
 > Google read adapters have been checked against live accounts. Optional service
 > adapters and Google write scopes still need live account verification. See
@@ -132,7 +132,7 @@ browser uses a one-time terminal pairing code, an HttpOnly session cookie, and
 CSRF protection. It shows tasks, results, model usage and health, configured
 sources, exact approval requests, and schedules. The configuration label means
 local credential and owner grant are present, not that a provider was just
-contacted. Tauri packaging and deeper memory/skill management remain in 5B.
+contacted. Phase 5B adds a Tauri package and deeper memory/skill management.
 The control center now uses a task-first workbench, compact activity and
 review views, and a documented visual system. See [web design notes](web/DESIGN.md)
 for layout decisions, tokens, accessibility rules, and research references.
@@ -249,6 +249,12 @@ API stay on the same loopback origin; no hosted Next.js service is used.
 Set `ORIN_API_USER` to choose the owner (default `local`). The API bearer token
 is for scripts and other clients and is never included in the web build.
 
+The optional desktop shell lives in [`desktop/`](desktop/README.md). It bundles
+the same static UI and Python runtime with Tauri, shows local service status,
+and keeps the browser URL available. Build instructions and platform prerequisites
+are in its README. The launcher can stop or restart its sidecar; it does not
+change the Telegram, CLI, or browser runtime contract.
+
 The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
 `/start`, `/status TASK_ID`, and `/resume TASK_ID`. Submit an API task with `POST /tasks`, run or
 resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
@@ -258,6 +264,14 @@ stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
 headers. The API token is required for programmatic task and control routes;
 the paired browser uses its owner-scoped session instead. Bind the server to localhost.
+
+The control center now includes Memory and Skills views for owner-scoped
+inspection, corrections, proposals, activation, and rollback. System shows
+session messages and aggregated observed model usage; Connections shows the
+last successful read only when a real execution was recorded. Google OAuth
+credentials stored locally can be disconnected there. Environment-managed
+tokens must be removed from local configuration instead. Token expiry is not
+shown because Orin does not currently retain a verified expiry for these grants.
 
 Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
 `GET /search` and `POST /search/index-local`; `/policy/grants`, `/policy/roots`,
@@ -346,6 +360,12 @@ The redesigned control center was also checked in Chrome at 320, 390, 768, and
 1280 CSS pixels. The workbench and activity views had no page overflow, and a
 mobile task completed through the same local API. The web tests check core text
 contrast and the reduced-motion fallback.
+The Phase 5B browser run used a fresh isolated database to exercise the desktop
+one-time-code handoff, memory create/edit/search/delete, skill proposal,
+activation and rollback, and session message drilldown. A Linux Tauri Debian
+bundle was built and launched in a virtual display. Its launcher reached the
+ready state and opened the same paired workbench; lifecycle controls were
+checked against the sidecar's loopback port.
 
 ## How it works today
 
@@ -439,9 +459,9 @@ approval (when needed) → versioned skill → rollback available
 
 Phase 5 starts with a local web release: Next.js builds static files, and the
 existing FastAPI service serves the UI and API on one loopback origin. Each
-installation keeps its own local data and browser session. Tauri will package
-that same UI and manage the Python service in a later Phase 5 step; it will not
-create a second runtime. See [Phase 5 tasks](TODO.md#phase-5--build-the-control-center).
+installation keeps its own local data and browser session. The Tauri shell
+packages that same UI and manages the Python service without a second runtime.
+See [Phase 5 tasks](TODO.md#phase-5--build-the-control-center).
 
 | Phase | Focus |
 |---|---|
@@ -450,7 +470,7 @@ create a second runtime. See [Phase 5 tasks](TODO.md#phase-5--build-the-control-
 | **2. Context engineering** ✅ | Token budgeting, bounded context, retrieval, model health, fallback routing, evaluation |
 | **3. Adaptive learning** ✅ | Owner-scoped memory, GitHub priority skill proposals/versioning, evaluator, rollback |
 | **4. Autonomy** ✅ core | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes; live optional-account checks pending |
-| **5. Interfaces** ✅ 5A | Local Next.js static control center complete; Tauri packaging and deeper management views remain |
+| **5. Interfaces** ✅ 5B core | Local Next.js control center, Tauri Debian package, and management views; Discord/Slack account linking pending |
 | **6. Hardening** | Benchmarks, recovery/security tests, migrations, backup, installer |
 | **7. Distributed** | Hub, Node, capability routing, selective encrypted sync |
 

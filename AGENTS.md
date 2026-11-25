@@ -106,13 +106,21 @@ FastAPI process as the API. A terminal-issued one-time code pairs one browser
 session for the configured owner; HttpOnly cookies, same-origin checks, and
 CSRF guard browser writes. The UI shows tasks, results, usage, model health,
 locally configured sources, approvals, and schedules. The browser flow was
-tested against a local server with an isolated database. Tauri packaging and
-deeper memory/skill controls remain in 5B.
+tested against a local server with an isolated database. The subsequent 5B
+work adds the desktop wrapper and deeper memory/skill controls.
 The UI design is recorded in `web/DESIGN.md`: task-first layout, restrained
 warm-neutral tokens, accessible status labels, and reduced-motion fallbacks.
 The pairing screen and workbench share a saved light/dark preference that
 defaults to the OS setting. The SVG favicon is part of the Next.js static
 export and is served from the loopback FastAPI process.
+Phase 5B adds a Tauri launcher under `desktop/`. It starts a PyInstaller-frozen
+copy of the same Python service and exported UI, exposes stop/restart and the
+loopback browser URL, and opens a local webview after one-time pairing. The
+browser control center now manages memory and skill versions and inspects
+session messages, observed usage, and successful source reads. Google OAuth
+disconnect is local-only. Desktop task/approval notifications are generic and
+contain no request contents. Discord and Slack channel adapters remain gated
+on verified account linking and channel authorization.
 
 ## 4. Repository map
 
@@ -144,6 +152,7 @@ export and is served from the loopback FastAPI process.
 | `evaluation/` | Synthetic fixtures and comparison benchmark |
 | `web/app`, `web/components`, `web/lib`, `web/styles` | Static Next.js pages, views, typed API client, and visual tokens |
 | `web/DESIGN.md` | Interface decisions and research references |
+| `desktop/` | Tauri launcher, bundled Python sidecar build, native package |
 | `tests/` | Credential-free workflow and adapter tests |
 | `TODO.md` | Phase checklists and completion criteria |
 | `INTEGRATIONS.md` | Integration research and connector roadmap |
@@ -377,7 +386,7 @@ write scopes independently.
 | **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Implemented; live cloud/local model and GitHub/Telegram checks passed |
 | **3. Adaptive learning** | Owner-scoped memory, GitHub and cross-source briefing skills, evaluator, rollback | Implemented and credential-free end-to-end tested |
 | **4. Autonomy** | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes | Core implemented and credential-free tested; optional account and live write verification pending |
-| **5. Interfaces** | Local Next.js static control center, then Tauri shell and deeper management views | 5A implemented and browser tested; 5B pending |
+| **5. Interfaces** | Local Next.js static control center, Tauri shell, and deeper management views | 5B core implemented; Discord/Slack channel linking pending verification |
 | **6. Hardening** | Benchmarks, recovery tests, security tests, migrations, backup/restore, installer | Not started |
 | **7. Distributed** | Hub, Node, capability routing, selective sync | Not started |
 
@@ -486,9 +495,9 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Implement Phase 5B in `TODO.md`: package the same static control center with
-Tauri and manage the existing Python runtime lifecycle. Keep the local web URL
-as an alternative interface and avoid a second agent runtime.
+Verify packaged desktop start, stop, restart, and notification behavior on each
+target OS. Then complete conditional Discord/Slack channel linking only with
+verified account ownership and channel authorization. Phase 6 hardening follows.
 Optional read adapters and Google write scopes still need live verification;
 do not describe fixture-only integrations as live supported.
 

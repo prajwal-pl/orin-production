@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orin · Local runtime</title>
+    <link rel="icon" href="favicon.svg" />
+    <link rel="stylesheet" href="launcher.css" />
+    <script src="launcher.js" defer></script>
+  </head>
+  <body>
+    <main class="panel">
+      <div class="brand">
+        <span class="mark">○</span><span>orin<span class="dot">.</span></span>
+      </div>
+      <p class="eyebrow">PERSONAL AGENT / DESKTOP</p>
+      <h1>Local runtime</h1>
+      <p class="lede">
+        The desktop app starts the same Orin service used by your browser and
+        channels.
+      </p>
+      <div class="status">
+        <span id="status-dot"></span>
+        <div>
+          <strong id="status-title">Starting Orin</strong>
+          <p id="status-detail">Preparing the local service…</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="open" disabled>
+          Open workbench <span aria-hidden="true">↗</span>
+        </button>
+        <button id="restart" class="secondary">Restart runtime</button>
+        <button id="stop" class="secondary">Stop runtime</button>
+      </div>
+      <div class="browser-url">
+        <span>LOCAL BROWSER URL</span><code id="url">Waiting for runtime</code
+        ><button id="copy" disabled>Copy</button>
+      </div>
+      <p class="foot">
+        Your data and credentials stay with the local Python runtime.
+      </p>
+    </main>
+  </body>
+</html>

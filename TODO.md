@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 through 3, implemented the Phase 4 controlled-autonomy core, and delivered the Phase 5A local web control center. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
+Orin has completed Phases 0 through 3, implemented the Phase 4 controlled-autonomy core, and delivered the Phase 5B desktop core and management views. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -99,9 +99,10 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 ### 5B — Packaged desktop release
 
-- [ ] Package the same static UI with Tauri and bundle/manage the Python runtime as a sidecar. Show startup, shutdown, restart, and failure status; retain the browser URL as an alternative interface.
-- [ ] Add deeper session, memory, skill version, model, usage, and connection management views. Show token expiry and last successful provider check only when verified data exists.
-- [ ] Add OS notifications and optional tray behavior without creating a second agent runtime.
+- [x] Package the same static UI with Tauri and bundle/manage the Python runtime as a sidecar. Show startup, shutdown, restart, and failure status; retain the browser URL as an alternative interface. Linux Debian bundle and sidecar loopback startup were smoke tested.
+- [x] Add deeper session, memory, skill version, model, usage, and connection management views. Show token expiry and last successful provider check only when verified data exists. Token expiry remains hidden because no verified expiry is stored.
+- [x] Add generic OS notifications for task completion, pauses, pending approvals, and runtime failure without creating a second agent runtime. The lifecycle launcher is the explicit control; an optional tray remains a follow-up.
+- [ ] Verify native notification display on installed Linux, macOS, and Windows builds; decide whether a tray adds enough value to include.
 - [ ] Keep channel adapters thin. Add Discord and Slack through the shared runtime with account linking and channel-specific authorization when those connections are verified.
 
 **Phase 5 done when** the packaged app starts the local runtime and the same authorized controls work in both desktop and browser views.

@@ -66,4 +66,12 @@ export class OrinClient {
   post<T>(path: string, body?: unknown): Promise<T> {
     return request<T>(path, "POST", body, this.csrf);
   }
+
+  put<T>(path: string, body: unknown): Promise<T> {
+    return request<T>(path, "PUT", body, this.csrf);
+  }
+
+  delete<T>(path: string): Promise<T> {
+    return request<T>(path, "DELETE", undefined, this.csrf);
+  }
 }

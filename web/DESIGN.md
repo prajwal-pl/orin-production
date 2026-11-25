@@ -41,6 +41,13 @@ and system details remain available without competing with the current task.
   columns stack while task details and actions stay visible.
 - Task history uses a list/detail layout. Approvals show exact parameters before
   actions. Schedules pair the creation form with the active job list.
+- Memory keeps creation and correction separate from the stored list. Skill
+  versions show the exact declarative order, fixture result, and observed use
+  before an owner activates or rolls back a version. System reveals session
+  messages on request and labels usage as observed rather than estimated.
+- Connections distinguish an OS credential from an environment token, show a
+  successful read timestamp only when execution history supports it, and
+  require confirmation before removing a local OAuth credential.
 
 ## Research references
 
