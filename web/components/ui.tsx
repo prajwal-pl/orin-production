@@ -6,11 +6,15 @@ export function StatusBadge({ status }: { status: string }) {
     status,
   )
     ? "success"
-    : ["paused", "pending", "unknown", "prepared", "executing"].includes(status)
-      ? "warning"
-      : ["failed", "denied", "cancelled", "unavailable"].includes(status)
-        ? "danger"
-        : "neutral";
+    : status === "running"
+      ? "info"
+      : ["paused", "pending", "unknown", "prepared", "executing"].includes(
+            status,
+          )
+        ? "warning"
+        : ["failed", "denied", "unavailable", "expired"].includes(status)
+          ? "danger"
+          : "neutral";
   return (
     <span className={`status-badge status-${tone}`}>
       <span className="status-dot" />

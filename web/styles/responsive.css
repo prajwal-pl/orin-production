@@ -1,0 +1,366 @@
+@media (max-width: 1220px) {
+  .overview-layout {
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+  }
+  .approval-list {
+    grid-template-columns: 1fr;
+  }
+  .source-scope {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    display: block;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: block;
+    padding: 10px 18px 0;
+    box-shadow: 0 5px 17px rgba(20, 30, 26, 0.1);
+  }
+  .sidebar-head {
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+  }
+  .sidebar-head .brand-symbol {
+    width: 27px;
+    height: 27px;
+  }
+  .sidebar-head .brand-word {
+    font-size: 21px;
+  }
+  .sidebar-edition,
+  .workspace-switch,
+  .sidebar-bottom,
+  .nav-group > p {
+    display: none;
+  }
+  .sidebar-nav {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    margin-top: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .sidebar-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-group {
+    display: flex;
+    flex-direction: row;
+    flex: none;
+    gap: 2px;
+  }
+  .nav-item {
+    width: auto;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 6px 6px 0 0;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .nav-item svg {
+    width: 16px;
+    height: 16px;
+  }
+  .nav-item.active {
+    border-color: transparent;
+    border-bottom: 2px solid #e0a380;
+    background: #2d3934;
+  }
+  .nav-count {
+    min-width: 17px;
+    height: 17px;
+  }
+  .topbar {
+    min-height: 105px;
+    padding: 21px 28px;
+  }
+  .content-area {
+    padding: 26px 28px 40px;
+  }
+  .app-footer {
+    padding: 12px 28px;
+  }
+  .overview-layout {
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.9fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    gap: 16px;
+  }
+  .topbar h1 {
+    font-size: 24px;
+  }
+  .topbar-heading > p:last-child {
+    font-size: 12px;
+  }
+  .connection-pill {
+    display: none;
+  }
+  .overview-layout,
+  .task-workspace,
+  .schedules-layout {
+    grid-template-columns: 1fr;
+  }
+  .overview-context {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .attention-panel {
+    grid-column: 1 / -1;
+  }
+  .task-index,
+  .task-inspector {
+    min-height: 0;
+  }
+  .task-list {
+    max-height: 310px;
+  }
+  .pair-layout {
+    grid-template-columns: 1fr;
+  }
+  .pair-story {
+    min-height: 0;
+    padding: 28px 32px;
+  }
+  .pair-story-content {
+    max-width: 100%;
+    padding: 42px 0 30px;
+  }
+  .pair-story h1 {
+    font-size: 44px;
+  }
+  .pair-story-content > p {
+    font-size: 14px;
+  }
+  .pair-principles,
+  .pair-story-foot {
+    display: none;
+  }
+  .pair-form-wrap {
+    align-items: flex-start;
+    min-height: 440px;
+    padding: 48px 32px;
+  }
+}
+
+@media (max-width: 540px) {
+  .sidebar {
+    padding: 9px 13px 0;
+  }
+  .sidebar-head .brand-lockup {
+    gap: 6px;
+  }
+  .nav-item {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .topbar {
+    min-height: 100px;
+    padding: 19px 18px;
+  }
+  .topbar-heading > p:last-child {
+    max-width: 220px;
+  }
+  .topbar-actions {
+    gap: 5px;
+  }
+  .header-avatar {
+    width: 32px;
+    height: 32px;
+    margin-left: 0;
+  }
+  .topbar-actions .icon-button {
+    width: 34px;
+    height: 34px;
+  }
+  .content-area {
+    padding: 18px 14px 30px;
+  }
+  .app-footer {
+    padding: 10px 15px;
+  }
+  .app-footer > span:first-child {
+    display: none;
+  }
+  .overview-page {
+    gap: 16px;
+  }
+  .overview-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+  .overview-summary > div {
+    padding: 15px;
+  }
+  .overview-summary > div:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .overview-summary > div:nth-child(4) {
+    border-top: 1px solid var(--line);
+  }
+  .overview-summary strong {
+    font-size: 24px;
+  }
+  .overview-context {
+    display: flex;
+    gap: 14px;
+  }
+  .composer-intro {
+    padding: 24px 19px 16px;
+  }
+  .composer-intro h2 {
+    font-size: 23px;
+  }
+  .composer form {
+    margin: 0 18px 18px;
+  }
+  .composer-compact form {
+    margin: 12px;
+  }
+  .suggestions {
+    padding: 13px 18px 16px;
+  }
+  .composer-shortcut {
+    display: none;
+  }
+  .composer-footer {
+    justify-content: flex-end;
+  }
+  .section-heading {
+    padding: 19px 18px 15px;
+  }
+  .section-heading h2 {
+    font-size: 17px;
+  }
+  .recent-row {
+    gap: 9px;
+    padding: 11px 16px;
+  }
+  .recent-row .status-badge {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+  .row-arrow {
+    display: none;
+  }
+  .page-intro {
+    align-items: flex-start;
+  }
+  .page-intro h2 {
+    font-size: 21px;
+  }
+  .intro-count {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+  }
+  .intro-count strong {
+    font-size: 22px;
+  }
+  .intro-count span {
+    max-width: 70px;
+    text-align: right;
+    line-height: 1.2;
+  }
+  .source-row {
+    gap: 9px;
+    min-height: 70px;
+    padding: 12px 17px;
+  }
+  .source-row .service-mark {
+    width: 34px;
+    height: 34px;
+  }
+  .source-main small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .source-row .status-badge {
+    min-width: 0;
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+  .approval-list {
+    padding: 0 14px 15px;
+  }
+  .approval-top {
+    padding: 13px;
+  }
+  .approval-top .status-badge {
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+  .parameters-block {
+    margin: 0 13px;
+  }
+  .schedule-form {
+    gap: 12px;
+    padding: 18px;
+  }
+  .schedule-form .field {
+    grid-column: 1 / -1;
+  }
+  .schedule-form-foot {
+    flex-wrap: wrap;
+  }
+  .schedule-list {
+    padding: 0 16px 9px;
+  }
+  .schedule-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 0;
+  }
+  .schedule-row .status-badge {
+    margin-left: 42px;
+  }
+  .task-detail-head {
+    padding: 21px 18px 17px;
+  }
+  .task-detail-meta {
+    padding: 0 18px 17px;
+  }
+  .inspector-top {
+    padding: 13px 18px;
+  }
+  .inspector-section {
+    padding: 21px 18px;
+  }
+  .task-actions {
+    padding: 0 18px 18px;
+  }
+  .model-list,
+  .session-grid {
+    padding-left: 17px;
+    padding-right: 17px;
+  }
+  .model-meta {
+    display: none;
+  }
+  .session-grid {
+    grid-template-columns: 1fr;
+  }
+  .pair-story {
+    padding: 25px 24px;
+  }
+  .pair-story h1 {
+    font-size: 41px;
+  }
+  .pair-form-wrap {
+    padding: 36px 24px;
+  }
+}

@@ -133,6 +133,9 @@ CSRF protection. It shows tasks, results, model usage and health, configured
 sources, exact approval requests, and schedules. The configuration label means
 local credential and owner grant are present, not that a provider was just
 contacted. Tauri packaging and deeper memory/skill management remain in 5B.
+The control center now uses a task-first workbench, compact activity and
+review views, and a documented visual system. See [web design notes](web/DESIGN.md)
+for layout decisions, tokens, accessibility rules, and research references.
 
 The GitHub notifications endpoint currently requires a classic personal access
 token with the `notifications` scope. GitHub does not support fine-grained tokens
@@ -336,6 +339,10 @@ by FastAPI: pairing, task creation and reload, approval review, daily schedule
 save/cancel, source and model views, and sign-out passed. A second isolated
 browser run completed a real read-only Calendar request and recorded a
 successful `calendar.events.read` execution without exposing event contents.
+The redesigned control center was also checked in Chrome at 320, 390, 768, and
+1280 CSS pixels. The workbench and activity views had no page overflow, and a
+mobile task completed through the same local API. The web tests check core text
+contrast and the reduced-motion fallback.
 
 ## How it works today
 

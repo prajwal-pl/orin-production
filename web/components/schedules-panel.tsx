@@ -87,120 +87,142 @@ export function SchedulesPanel({
 
   return (
     <div className="panel-stack">
-      <section className="surface-card">
-        <SectionHeading
-          eyebrow="AUTOMATION"
-          title="Create a schedule"
-          description="Run an existing read workflow once or every day. The local worker must be running when it is due."
-        />
-        <form className="schedule-form" onSubmit={submit}>
-          <div className="field full">
-            <label htmlFor="schedule-request">What should Orin do?</label>
-            <input
-              id="schedule-request"
-              required
-              maxLength={4000}
-              value={request}
-              onChange={(event) => setRequest(event.target.value)}
-              placeholder="Daily briefing"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="schedule-frequency">Frequency</label>
-            <select
-              id="schedule-frequency"
-              value={recurrence}
-              onChange={(event) =>
-                setRecurrence(event.target.value as "once" | "daily")
-              }
-            >
-              <option value="once">One time</option>
-              <option value="daily">Every day</option>
-            </select>
-          </div>
-          {recurrence === "once" ? (
-            <div className="field">
-              <label htmlFor="schedule-when">Run at</label>
+      <div className="page-intro">
+        <div>
+          <p className="eyebrow">RECURRING WORK</p>
+          <h2>Make space for what matters</h2>
+          <p>
+            Schedule a read workflow once or every day. Orin keeps each run in
+            your work log.
+          </p>
+        </div>
+        <div className="intro-count">
+          <strong>
+            {schedules.filter((job) => job.status === "active").length}
+          </strong>
+          <span>active jobs</span>
+        </div>
+      </div>
+      <div className="schedules-layout">
+        <section className="surface-card">
+          <SectionHeading
+            eyebrow="NEW AUTOMATION"
+            title="Create a schedule"
+            description="The local schedule worker needs to be running when this job is due."
+          />
+          <form className="schedule-form" onSubmit={submit}>
+            <div className="field full">
+              <label htmlFor="schedule-request">What should Orin do?</label>
               <input
-                id="schedule-when"
-                type="datetime-local"
+                id="schedule-request"
                 required
-                value={runAt}
-                onChange={(event) => setRunAt(event.target.value)}
+                maxLength={4000}
+                value={request}
+                onChange={(event) => setRequest(event.target.value)}
+                placeholder="Daily briefing"
               />
+            </div>
+            <div className="field">
+              <label htmlFor="schedule-frequency">Frequency</label>
+              <select
+                id="schedule-frequency"
+                value={recurrence}
+                onChange={(event) =>
+                  setRecurrence(event.target.value as "once" | "daily")
+                }
+              >
+                <option value="once">One time</option>
+                <option value="daily">Every day</option>
+              </select>
+            </div>
+            {recurrence === "once" ? (
+              <div className="field">
+                <label htmlFor="schedule-when">Run at</label>
+                <input
+                  id="schedule-when"
+                  type="datetime-local"
+                  required
+                  value={runAt}
+                  onChange={(event) => setRunAt(event.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="field">
+                <label htmlFor="schedule-time">Local time</label>
+                <input
+                  id="schedule-time"
+                  type="time"
+                  required
+                  value={dailyTime}
+                  onChange={(event) => setDailyTime(event.target.value)}
+                />
+              </div>
+            )}
+            <div className="schedule-form-foot">
+              <span>Time zone: {timezone}</span>
+              <button
+                type="submit"
+                className="button button-primary"
+                disabled={busy || !request.trim()}
+              >
+                <Plus size={17} />
+                Save schedule
+              </button>
+            </div>
+          </form>
+          {message && (
+            <Notice
+              kind={message.startsWith("Schedule saved") ? "success" : "error"}
+            >
+              {message}
+            </Notice>
+          )}
+        </section>
+        <section className="surface-card">
+          <SectionHeading
+            eyebrow="YOUR AUTOMATIONS"
+            title="Scheduled jobs"
+            description="Inspect the next run or cancel a job at any time."
+          />
+          {schedules.length ? (
+            <div className="schedule-list">
+              {schedules.map((job) => (
+                <div className="schedule-row" key={job.id}>
+                  <span className="schedule-icon">
+                    <CalendarClock size={19} />
+                  </span>
+                  <div className="schedule-main">
+                    <strong>{job.request}</strong>
+                    <small>
+                      {job.recurrence === "daily" ? "Daily" : "One time"} · Next{" "}
+                      {formatDate(job.next_run_at)} · {job.timezone}
+                    </small>
+                  </div>
+                  <StatusBadge status={job.status} />
+                  {job.status === "active" && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Cancel schedule"
+                      aria-label={`Cancel ${job.request}`}
+                      disabled={busy}
+                      onClick={() => void cancel(job.id)}
+                    >
+                      <X size={17} />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           ) : (
-            <div className="field">
-              <label htmlFor="schedule-time">Local time</label>
-              <input
-                id="schedule-time"
-                type="time"
-                required
-                value={dailyTime}
-                onChange={(event) => setDailyTime(event.target.value)}
-              />
-            </div>
+            <EmptyState
+              icon={CalendarClock}
+              title="Nothing scheduled"
+              description="Create a one-time or daily read task to see it here."
+            />
           )}
-          <div className="schedule-form-foot">
-            <span>Time zone: {timezone}</span>
-            <button
-              type="submit"
-              className="button button-primary"
-              disabled={busy || !request.trim()}
-            >
-              <Plus size={17} />
-              Save schedule
-            </button>
-          </div>
-        </form>
-        {message && (
-          <Notice
-            kind={message.startsWith("Schedule saved") ? "success" : "error"}
-          >
-            {message}
-          </Notice>
-        )}
-      </section>
-      <section className="surface-card">
-        <SectionHeading eyebrow="YOUR AUTOMATIONS" title="Scheduled jobs" />
-        {schedules.length ? (
-          <div className="schedule-list">
-            {schedules.map((job) => (
-              <div className="schedule-row" key={job.id}>
-                <span className="schedule-icon">
-                  <CalendarClock size={19} />
-                </span>
-                <div className="schedule-main">
-                  <strong>{job.request}</strong>
-                  <small>
-                    {job.recurrence === "daily" ? "Daily" : "One time"} · Next{" "}
-                    {formatDate(job.next_run_at)} · {job.timezone}
-                  </small>
-                </div>
-                <StatusBadge status={job.status} />
-                {job.status === "active" && (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    title="Cancel schedule"
-                    aria-label={`Cancel ${job.request}`}
-                    disabled={busy}
-                    onClick={() => void cancel(job.id)}
-                  >
-                    <X size={17} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={CalendarClock}
-            title="Nothing scheduled"
-            description="Create a one-time or daily read task to see it here."
-          />
-        )}
-      </section>
+        </section>
+      </div>
     </div>
   );
 }

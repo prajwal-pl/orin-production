@@ -1,186 +1,246 @@
 import {
-  Activity,
-  AlertCircle,
-  CheckCircle2,
+  ArrowRight,
+  ArrowUpRight,
+  Check,
   Clock3,
-  DatabaseZap,
-  Layers3,
-  type LucideIcon,
+  ShieldAlert,
+  Zap,
 } from "lucide-react";
 import { formatDate, formatNumber, titleCase } from "@/lib/format";
 import type { DashboardData, Task } from "@/lib/types";
+import { ServiceMark, serviceName } from "./service-mark";
+import { TaskComposer } from "./task-composer";
 import { EmptyState, SectionHeading, StatusBadge } from "./ui";
-
-function Metric({
-  label,
-  value,
-  icon: Icon,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  tone?: string;
-}) {
-  return (
-    <div className={`metric-card metric-${tone}`}>
-      <div className="metric-top">
-        <span>{label}</span>
-        <Icon size={20} strokeWidth={1.8} />
-      </div>
-      <strong>{value}</strong>
-    </div>
-  );
-}
 
 export function OverviewPanel({
   data,
   onSelectTask,
   onOpenTasks,
+  onOpenApprovals,
+  onOpenConnections,
+  onOpenSchedules,
+  onCreateTask,
 }: {
   data: DashboardData;
   onSelectTask: (task: Task) => void;
   onOpenTasks: () => void;
+  onOpenApprovals: () => void;
+  onOpenConnections: () => void;
+  onOpenSchedules: () => void;
+  onCreateTask: (request: string) => Promise<void>;
 }) {
   const completed = data.tasks.filter(
     (task) => task.status === "completed",
   ).length;
-  const paused = data.tasks.filter((task) => task.status === "paused").length;
   const running = data.tasks.filter((task) => task.status === "running").length;
-  const connected = data.capabilities.filter(
-    (source) => source.configured,
-  ).length;
+  const paused = data.tasks.filter((task) => task.status === "paused");
+  const approvals = data.approvals.filter((item) => item.status === "pending");
+  const configured = data.capabilities.filter((source) => source.configured);
+  const nextSchedule = data.schedules
+    .filter((job) => job.status === "active")
+    .sort((a, b) => a.next_run_at.localeCompare(b.next_run_at))[0];
 
   return (
-    <div className="panel-stack">
-      <section className="welcome-card">
+    <div className="overview-page">
+      <div className="overview-summary" aria-label="Workspace summary">
         <div>
-          <p className="eyebrow light">YOUR WORKSPACE AT A GLANCE</p>
-          <h2>Good to have you here.</h2>
-          <p>
-            Orin keeps track of the details, so you can focus on what matters
-            next.
-          </p>
-          <button
-            type="button"
-            className="button button-light"
-            onClick={onOpenTasks}
-          >
-            Start a task <Activity size={17} />
-          </button>
+          <span>COMPLETED</span>
+          <strong>{formatNumber(completed)}</strong>
+          <small>tasks</small>
         </div>
-        <div className="welcome-visual" aria-hidden="true">
-          <div className="welcome-ring ring-one" />
-          <div className="welcome-ring ring-two" />
-          <div className="welcome-core">
-            <Layers3 size={32} />
-          </div>
+        <div>
+          <span>IN PROGRESS</span>
+          <strong>{formatNumber(running)}</strong>
+          <small>right now</small>
         </div>
-      </section>
-
-      <div className="metrics-grid">
-        <Metric
-          label="Total tasks"
-          value={formatNumber(data.tasks.length)}
-          icon={Activity}
-        />
-        <Metric
-          label="Completed"
-          value={formatNumber(completed)}
-          icon={CheckCircle2}
-          tone="green"
-        />
-        <Metric
-          label="Needs attention"
-          value={formatNumber(paused)}
-          icon={AlertCircle}
-          tone="amber"
-        />
-        <Metric
-          label="Sources configured"
-          value={`${connected} / ${data.capabilities.length}`}
-          icon={DatabaseZap}
-          tone="blue"
-        />
+        <div>
+          <span>NEEDS ATTENTION</span>
+          <strong>{formatNumber(paused.length + approvals.length)}</strong>
+          <small>items</small>
+        </div>
+        <div>
+          <span>CONNECTED</span>
+          <strong>
+            {formatNumber(configured.length)}
+            <em>/{data.capabilities.length}</em>
+          </strong>
+          <small>sources</small>
+        </div>
       </div>
 
-      <div className="overview-columns">
-        <section className="surface-card">
-          <SectionHeading
-            eyebrow="ACTIVITY"
-            title="Recent tasks"
-            action={
-              <button
-                type="button"
-                className="text-button"
-                onClick={onOpenTasks}
-              >
-                View all
-              </button>
-            }
-          />
-          {data.tasks.length ? (
-            <div className="recent-list">
-              {data.tasks.slice(0, 6).map((task) => (
+      <div className="overview-layout">
+        <div className="overview-primary">
+          <TaskComposer onSubmit={onCreateTask} />
+          <section className="surface-card activity-panel">
+            <SectionHeading
+              eyebrow="RECENT WORK"
+              title="Activity"
+              description="A trace of what Orin has handled."
+              action={
                 <button
                   type="button"
-                  className="recent-row"
-                  key={task.id}
-                  onClick={() => onSelectTask(task)}
+                  className="text-button"
+                  onClick={onOpenTasks}
                 >
-                  <span className={`recent-icon recent-${task.status}`}>
-                    <Activity size={17} />
-                  </span>
-                  <span className="recent-main">
-                    <strong>{task.request}</strong>
-                    <small>
-                      {titleCase(task.kind)} · {formatDate(task.created_at)}
-                    </small>
-                  </span>
-                  <StatusBadge status={task.status} />
+                  All activity <ArrowRight size={15} />
                 </button>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={Clock3}
-              title="No tasks yet"
-              description="Your recent work will appear here after you ask Orin to do something."
-            />
-          )}
-        </section>
-        <section className="surface-card compact-card">
-          <SectionHeading eyebrow="RUNTIME" title="At this moment" />
-          <div className="runtime-fact">
-            <span>Active work</span>
-            <strong>
-              {running} task{running === 1 ? "" : "s"}
-            </strong>
-          </div>
-          <div className="runtime-fact">
-            <span>Open approvals</span>
-            <strong>
-              {
-                data.approvals.filter((item) => item.status === "pending")
-                  .length
               }
-            </strong>
-          </div>
-          <div className="runtime-fact">
-            <span>Scheduled jobs</span>
-            <strong>
-              {data.schedules.filter((item) => item.status === "active").length}
-            </strong>
-          </div>
-          <div className="runtime-fact">
-            <span>Sessions</span>
-            <strong>{data.sessions.length}</strong>
-          </div>
-          <div className="runtime-note">
-            <span className="status-dot" /> This view reads from your local Orin
-            database.
-          </div>
-        </section>
+            />
+            {data.tasks.length ? (
+              <div className="recent-list">
+                {data.tasks.slice(0, 6).map((task) => (
+                  <button
+                    type="button"
+                    className="recent-row"
+                    key={task.id}
+                    onClick={() => onSelectTask(task)}
+                  >
+                    <span className={`recent-icon recent-${task.status}`}>
+                      <span />
+                    </span>
+                    <span className="recent-main">
+                      <strong>{task.request}</strong>
+                      <small>
+                        {titleCase(task.kind)} <span>·</span>{" "}
+                        {formatDate(task.created_at)}
+                      </small>
+                    </span>
+                    <StatusBadge status={task.status} />
+                    <ArrowUpRight className="row-arrow" size={16} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Clock3}
+                title="Nothing in the activity log yet"
+                description="Start with a briefing or ask Orin about a connected service."
+              />
+            )}
+          </section>
+        </div>
+
+        <aside className="overview-context" aria-label="Workspace context">
+          <section className="attention-panel">
+            <div className="context-heading">
+              <span className="context-icon">
+                <ShieldAlert size={18} />
+              </span>
+              <div>
+                <p>IN YOUR HANDS</p>
+                <h2>Needs attention</h2>
+              </div>
+            </div>
+            {approvals.length || paused.length ? (
+              <div className="attention-list">
+                {approvals.length > 0 && (
+                  <button type="button" onClick={onOpenApprovals}>
+                    <span className="attention-number">{approvals.length}</span>
+                    <span>
+                      <strong>Actions to review</strong>
+                      <small>Check exact parameters before approval</small>
+                    </span>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+                {paused.length > 0 && (
+                  <button type="button" onClick={() => onSelectTask(paused[0])}>
+                    <span className="attention-number">{paused.length}</span>
+                    <span>
+                      <strong>Paused tasks</strong>
+                      <small>Resume when dependencies are ready</small>
+                    </span>
+                    <ArrowRight size={16} />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="all-clear">
+                <span>
+                  <Check size={18} />
+                </span>
+                <strong>All clear</strong>
+                <p>No pending decisions or paused work.</p>
+              </div>
+            )}
+          </section>
+
+          <section className="surface-card context-card">
+            <div className="context-card-head">
+              <div>
+                <p className="eyebrow">AVAILABLE TO ORIN</p>
+                <h2>Connections</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="View connections"
+                onClick={onOpenConnections}
+              >
+                <ArrowUpRight size={18} />
+              </button>
+            </div>
+            <div className="connection-list">
+              {configured.length ? (
+                configured.slice(0, 4).map((source) => (
+                  <div className="connection-row" key={source.key}>
+                    <ServiceMark source={source.key} />
+                    <span>{serviceName(source.key)}</span>
+                    <span className="connection-ready">Configured</span>
+                  </div>
+                ))
+              ) : (
+                <p className="context-empty">
+                  No sources configured yet. Add a connection to give Orin
+                  useful context.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="context-link"
+              onClick={onOpenConnections}
+            >
+              {configured.length} of {data.capabilities.length} sources
+              configured <ArrowRight size={14} />
+            </button>
+          </section>
+
+          <section className="surface-card context-card next-run-card">
+            <div className="context-card-head">
+              <div>
+                <p className="eyebrow">UP NEXT</p>
+                <h2>Automation</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="View automations"
+                onClick={onOpenSchedules}
+              >
+                <ArrowUpRight size={18} />
+              </button>
+            </div>
+            {nextSchedule ? (
+              <div className="next-run">
+                <span className="next-run-icon">
+                  <Zap size={17} />
+                </span>
+                <strong>{nextSchedule.request}</strong>
+                <small>
+                  {formatDate(nextSchedule.next_run_at)} ·{" "}
+                  {nextSchedule.timezone}
+                </small>
+              </div>
+            ) : (
+              <div className="next-run empty">
+                <span className="next-run-icon">
+                  <Zap size={17} />
+                </span>
+                <strong>No upcoming jobs</strong>
+                <small>Set a schedule for recurring work.</small>
+              </div>
+            )}
+          </section>
+        </aside>
       </div>
     </div>
   );

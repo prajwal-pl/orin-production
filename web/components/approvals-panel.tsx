@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, FileClock, RotateCcw, ShieldCheck, X } from "lucide-react";
+import {
+  Check,
+  FileClock,
+  Info,
+  RotateCcw,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { OrinClient } from "@/lib/api";
 import { formatDate, shortId, titleCase } from "@/lib/format";
 import type { Action, Approval } from "@/lib/types";
@@ -45,21 +52,31 @@ export function ApprovalsPanel({
 
   return (
     <div className="panel-stack">
-      <section className="intro-strip">
-        <ShieldCheck size={24} />
+      <div className="page-intro">
         <div>
-          <strong>Every write needs your approval.</strong>
-          <p>
-            Review the exact parameters, account capability, and expiry before
-            allowing an action to run.
-          </p>
+          <p className="eyebrow">DECISION QUEUE</p>
+          <h2>Keep control of every action</h2>
+          <p>Orin waits for your decision before a scoped write can run.</p>
         </div>
-      </section>
+        <div className="intro-count">
+          <strong>
+            {approvals.filter((item) => item.status === "pending").length}
+          </strong>
+          <span>awaiting review</span>
+        </div>
+      </div>
+      <div className="inline-info">
+        <Info size={17} />
+        <span>
+          Review the <strong>exact parameters</strong>, capability, and expiry
+          before approving. An approval is single-use.
+        </span>
+      </div>
       {message && <Notice kind="error">{message}</Notice>}
       <section className="surface-card">
         <SectionHeading
           eyebrow="REVIEW QUEUE"
-          title="Approvals"
+          title="Review queue"
           description={`${approvals.filter((item) => item.status === "pending").length} waiting for review`}
         />
         {sorted.length ? (

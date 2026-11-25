@@ -108,6 +108,8 @@ CSRF guard browser writes. The UI shows tasks, results, usage, model health,
 locally configured sources, approvals, and schedules. The browser flow was
 tested against a local server with an isolated database. Tauri packaging and
 deeper memory/skill controls remain in 5B.
+The UI design is recorded in `web/DESIGN.md`: task-first layout, restrained
+warm-neutral tokens, accessible status labels, and reduced-motion fallbacks.
 
 ## 4. Repository map
 
@@ -137,7 +139,8 @@ deeper memory/skill controls remain in 5B.
 | `orchestration/skills.py` | GitHub priority skill registry and evaluation |
 | `orchestration/schema.py` | Classifier and verifier schemas |
 | `evaluation/` | Synthetic fixtures and comparison benchmark |
-| `web/app`, `web/components`, `web/lib` | Static Next.js pages, control center views, typed API client |
+| `web/app`, `web/components`, `web/lib`, `web/styles` | Static Next.js pages, views, typed API client, and visual tokens |
+| `web/DESIGN.md` | Interface decisions and research references |
 | `tests/` | Credential-free workflow and adapter tests |
 | `TODO.md` | Phase checklists and completion criteria |
 | `INTEGRATIONS.md` | Integration research and connector roadmap |

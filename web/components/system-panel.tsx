@@ -12,6 +12,19 @@ export function SystemPanel({
 }) {
   return (
     <div className="panel-stack">
+      <div className="page-intro">
+        <div>
+          <p className="eyebrow">RUNTIME OBSERVABILITY</p>
+          <h2>Inside Orin</h2>
+          <p>
+            What the local runtime has observed about models and workspaces.
+          </p>
+        </div>
+        <div className="intro-count">
+          <strong>{models.length}</strong>
+          <span>model records</span>
+        </div>
+      </div>
       <section className="surface-card">
         <SectionHeading
           eyebrow="INFERENCE"

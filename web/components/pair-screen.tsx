@@ -1,9 +1,17 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowUpRight, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  KeyRound,
+  ListChecks,
+  LockKeyhole,
+  ShieldCheck,
+} from "lucide-react";
 import { pairBrowser } from "@/lib/api";
 import type { BrowserSession } from "@/lib/types";
+import { Brand } from "./brand";
 import { Notice } from "./ui";
 
 export function PairScreen({
@@ -37,48 +45,57 @@ export function PairScreen({
   return (
     <div className="pair-layout">
       <section className="pair-story">
-        <div className="pair-brand">
-          <span className="brand-mark">
-            <Sparkles size={21} />
-          </span>
-          <span>
-            orin<span className="brand-period">.</span>
-          </span>
-        </div>
+        <Brand />
         <div className="pair-story-content">
-          <div className="pair-orbit" aria-hidden="true">
-            <div className="pair-orbit-core">
-              <Sparkles size={42} />
-            </div>
-            <i />
-            <i />
-            <i />
-          </div>
-          <p className="eyebrow light">YOUR AGENT, IN YOUR HANDS</p>
+          <span className="pair-overline">
+            <span className="pulse-dot" /> LOCAL CONTROL CENTER
+          </span>
           <h1>
-            A clearer view of
+            Your agent.
             <br />
-            <em>everything Orin does.</em>
+            Your call.
           </h1>
           <p>
-            Tasks, connections, approvals, and activity in one calm
-            place—running on your own computer.
+            A focused place to give Orin work, inspect what happened, and decide
+            what it may do next.
           </p>
+          <div className="pair-principles">
+            <div>
+              <span>
+                <ListChecks size={18} />
+              </span>
+              <strong>Trace every task</strong>
+              <small>From request to result</small>
+            </div>
+            <div>
+              <span>
+                <ShieldCheck size={18} />
+              </span>
+              <strong>Approve with context</strong>
+              <small>Exact actions, never a blank check</small>
+            </div>
+            <div>
+              <span>
+                <LockKeyhole size={18} />
+              </span>
+              <strong>Keep it local</strong>
+              <small>This interface runs on your device</small>
+            </div>
+          </div>
         </div>
         <div className="pair-story-foot">
-          <ShieldCheck size={17} /> Local runtime · Your data stays on this
-          device
+          <span className="footer-mark" /> ORIN / PERSONAL RUNTIME
         </div>
       </section>
       <section className="pair-form-wrap">
         <div className="pair-form-card">
-          <div className="pair-lock">
-            <LockKeyhole size={23} />
+          <div className="pair-form-icon">
+            <KeyRound size={22} />
           </div>
-          <p className="eyebrow">LOCAL CONTROL CENTER</p>
+          <p className="eyebrow">STEP 01 / SECURE ACCESS</p>
           <h2>Pair this browser</h2>
-          <p className="muted">
-            Enter the one-time code shown in the terminal where you started
+          <p className="pair-description">
+            Enter the one-time code printed in the terminal where you started
             Orin.
           </p>
           {available ? (
@@ -89,7 +106,7 @@ export function PairScreen({
                 type="text"
                 autoComplete="one-time-code"
                 autoFocus
-                placeholder="Paste your code"
+                placeholder="Enter your code"
                 value={code}
                 onChange={(event) => setCode(event.target.value)}
               />
@@ -98,8 +115,8 @@ export function PairScreen({
                 type="submit"
                 disabled={!code.trim() || busy}
               >
-                {busy ? "Pairing…" : "Open control center"}
-                <ArrowUpRight size={17} />
+                {busy ? "Pairing…" : "Open workbench"}
+                <ArrowRight size={17} />
               </button>
             </form>
           ) : (
@@ -110,9 +127,12 @@ export function PairScreen({
             </Notice>
           )}
           {error && <Notice kind="error">{error}</Notice>}
-          <p className="pair-hint">
-            This page connects only to the Orin service on your computer.
-          </p>
+          <div className="pair-form-foot">
+            <Check size={15} />
+            <span>
+              One-time code · Private browser session · No cloud dashboard
+            </span>
+          </div>
         </div>
       </section>
     </div>

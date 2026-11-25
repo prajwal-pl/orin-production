@@ -1,61 +1,85 @@
-import { DatabaseZap, LockKeyhole, PlugZap } from "lucide-react";
+import { Info, LockKeyhole, Plug2 } from "lucide-react";
 import type { Capability } from "@/lib/types";
-import { EmptyState, Notice, SectionHeading, StatusBadge } from "./ui";
+import { ServiceMark, serviceName } from "./service-mark";
+import { EmptyState, SectionHeading, StatusBadge } from "./ui";
 
 export function ConnectionsPanel({
   capabilities,
 }: {
   capabilities: Capability[];
 }) {
+  const configured = capabilities.filter((item) => item.configured);
+  const remaining = capabilities.filter((item) => !item.configured);
+
+  const rows = (sources: Capability[]) =>
+    sources.map((source) => (
+      <div className="source-row" key={source.key}>
+        <ServiceMark source={source.key} size={20} />
+        <div className="source-main">
+          <strong>{serviceName(source.key)}</strong>
+          <small>{source.description}</small>
+        </div>
+        <span className="source-scope">
+          <LockKeyhole size={14} />{" "}
+          {source.read_only ? "Read only" : "Scoped access"}
+        </span>
+        <StatusBadge
+          status={source.configured ? "configured" : "not configured"}
+        />
+      </div>
+    ));
+
   return (
     <div className="panel-stack">
-      <Notice>
-        “Configured” means Orin found a local credential and owner grant. It
-        does not confirm the provider currently accepts that credential.
-      </Notice>
-      <section className="surface-card">
+      <div className="page-intro">
+        <div>
+          <p className="eyebrow">SERVICE DIRECTORY</p>
+          <h2>What Orin can reach</h2>
+          <p>Each source has its own credential and permission boundary.</p>
+        </div>
+        <div className="intro-count">
+          <strong>{configured.length}</strong>
+          <span>of {capabilities.length} configured</span>
+        </div>
+      </div>
+      <div className="inline-info">
+        <Info size={17} />
+        <span>
+          <strong>Configured is a local state.</strong> It means a credential
+          and owner grant exist here. Provider access is checked when a task
+          runs.
+        </span>
+      </div>
+      <p className="setup-hint">
+        Need to add a source? Connection setup is currently done from the Orin
+        project terminal. The README lists each OAuth and token command.
+      </p>
+      <section className="surface-card source-section">
         <SectionHeading
-          eyebrow="INTEGRATIONS"
-          title="Connected sources"
-          description="Each source has its own permission boundary and capability."
+          eyebrow="READY FOR REQUESTS"
+          title="Configured sources"
+          description="Available to read when the provider accepts the credential."
         />
-        {capabilities.length ? (
-          <div className="source-grid">
-            {capabilities.map((source) => (
-              <article className="source-card" key={source.key}>
-                <div className="source-top">
-                  <span className="source-icon">
-                    <PlugZap size={21} />
-                  </span>
-                  <StatusBadge
-                    status={source.configured ? "configured" : "not configured"}
-                  />
-                </div>
-                <h3>
-                  {source.key === "github"
-                    ? "GitHub"
-                    : source.key === "gmail"
-                      ? "Gmail"
-                      : source.key === "todoist"
-                        ? "Todoist"
-                        : source.key[0].toUpperCase() + source.key.slice(1)}
-                </h3>
-                <p>{source.description}</p>
-                <div className="source-permission">
-                  <LockKeyhole size={14} />
-                  <span>{source.capability}</span>
-                </div>
-              </article>
-            ))}
-          </div>
+        {configured.length ? (
+          <div className="source-list">{rows(configured)}</div>
         ) : (
           <EmptyState
-            icon={DatabaseZap}
-            title="No sources listed"
-            description="The local runtime has not reported any capabilities."
+            icon={Plug2}
+            title="No sources configured"
+            description="Connect a source locally to give Orin access to useful context."
           />
         )}
       </section>
+      {remaining.length > 0 && (
+        <section className="surface-card source-section">
+          <SectionHeading
+            eyebrow="AVAILABLE"
+            title="Other sources"
+            description="These integrations need a local credential and owner grant."
+          />
+          <div className="source-list">{rows(remaining)}</div>
+        </section>
+      )}
     </div>
   );
 }

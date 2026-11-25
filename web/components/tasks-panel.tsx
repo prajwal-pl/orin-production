@@ -1,20 +1,25 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
+  ArrowUpRight,
   Ban,
   CirclePlay,
   Clock3,
+  FileText,
   Search,
-  Send,
+  Signal,
   TerminalSquare,
 } from "lucide-react";
 import { OrinClient } from "@/lib/api";
 import { formatDate, formatNumber, shortId, titleCase } from "@/lib/format";
 import { useTaskEvents } from "@/lib/use-dashboard";
 import type { Task, UsageRecord } from "@/lib/types";
-import { EmptyState, Notice, SectionHeading, StatusBadge } from "./ui";
+import { TaskComposer } from "./task-composer";
+import { EmptyState, Notice, StatusBadge } from "./ui";
+
+const filters = ["All", "Running", "Paused", "Completed"] as const;
+type TaskFilter = (typeof filters)[number];
 
 function ResultText({ text }: { text: string }) {
   return (
@@ -22,7 +27,7 @@ function ResultText({ text }: { text: string }) {
       {text.split(/(https:\/\/[^\s<>]+)/g).map((part, index) =>
         part.startsWith("https://") ? (
           <a key={index} href={part} target="_blank" rel="noopener noreferrer">
-            {part}
+            {part} <ArrowUpRight size={13} />
           </a>
         ) : (
           <span key={index}>{part}</span>
@@ -34,21 +39,21 @@ function ResultText({ text }: { text: string }) {
 
 export function TasksPanel({
   client,
-  owner,
   tasks,
   selectedId,
   onSelect,
   refresh,
+  onCreateTask,
 }: {
   client: OrinClient;
-  owner: string;
   tasks: Task[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   refresh: () => Promise<void>;
+  onCreateTask: (request: string) => Promise<void>;
 }) {
-  const [request, setRequest] = useState("");
-  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<TaskFilter>("All");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [usage, setUsage] = useState<UsageRecord[]>([]);
@@ -56,12 +61,18 @@ export function TasksPanel({
     tasks.find((task) => task.id === selectedId) || tasks[0] || null;
   const visible = useMemo(
     () =>
-      tasks.filter((task) =>
-        `${task.request} ${task.kind} ${task.status}`
+      tasks.filter((task) => {
+        const matchesQuery = `${task.request} ${task.kind} ${task.status}`
           .toLowerCase()
-          .includes(filter.toLowerCase()),
-      ),
-    [tasks, filter],
+          .includes(query.toLowerCase());
+        const matchesFilter =
+          filter === "All" ||
+          (filter === "Running"
+            ? ["running", "pending"].includes(task.status)
+            : task.status === filter.toLowerCase());
+        return matchesQuery && matchesFilter;
+      }),
+    [tasks, query, filter],
   );
   const streamState = useTaskEvents(
     selected?.id || null,
@@ -88,30 +99,6 @@ export function TasksPanel({
     };
   }, [client, selected?.id, selected?.status]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!request.trim()) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const created = await client.post<{ id: string }>("/tasks", {
-        session_id: `web:${owner}`,
-        request: request.trim(),
-      });
-      onSelect(created.id);
-      setRequest("");
-      await refresh();
-      await client.post(`/tasks/${encodeURIComponent(created.id)}/run`);
-      await refresh();
-    } catch (failure) {
-      setMessage(
-        failure instanceof Error ? failure.message : "Could not start the task",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function act(path: string) {
     if (!selected) return;
     setBusy(true);
@@ -129,40 +116,19 @@ export function TasksPanel({
   }
 
   return (
-    <div className="panel-stack">
-      <section className="surface-card composer-card">
-        <SectionHeading
-          eyebrow="NEW WORK"
-          title="Ask Orin to do something"
-          description="Tasks run through the same runtime as Telegram and the CLI."
-        />
-        <form onSubmit={submit} className="composer-form">
-          <label className="sr-only" htmlFor="task-request">
-            Task request
-          </label>
-          <textarea
-            id="task-request"
-            value={request}
-            onChange={(event) => setRequest(event.target.value)}
-            placeholder="For example, show my upcoming Calendar events…"
-            rows={2}
-            maxLength={4000}
-          />
-          <button
-            type="submit"
-            className="button button-primary"
-            disabled={busy || !request.trim()}
-          >
-            <Send size={17} />
-            {busy ? "Working…" : "Start task"}
-          </button>
-        </form>
-        {message && <Notice kind="error">{message}</Notice>}
-      </section>
-
-      <div className="task-layout">
-        <section className="surface-card task-list-card">
-          <SectionHeading eyebrow="ACTIVITY" title="Task history" />
+    <div className="tasks-page">
+      <TaskComposer onSubmit={onCreateTask} compact />
+      {message && <Notice kind="error">{message}</Notice>}
+      <div className="task-workspace">
+        <section className="surface-card task-index" aria-label="Task history">
+          <div className="task-index-head">
+            <div>
+              <p className="eyebrow">WORK LOG</p>
+              <h2>
+                Task history <span>{tasks.length}</span>
+              </h2>
+            </div>
+          </div>
           <div className="search-field">
             <Search size={17} />
             <label className="sr-only" htmlFor="task-search">
@@ -170,10 +136,23 @@ export function TasksPanel({
             </label>
             <input
               id="task-search"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter tasks"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tasks"
             />
+          </div>
+          <div className="filter-bar" aria-label="Filter by status">
+            {filters.map((item) => (
+              <button
+                type="button"
+                key={item}
+                className={filter === item ? "selected" : ""}
+                aria-pressed={filter === item}
+                onClick={() => setFilter(item)}
+              >
+                {item}
+              </button>
+            ))}
           </div>
           {visible.length ? (
             <div className="task-list">
@@ -184,68 +163,72 @@ export function TasksPanel({
                   className={`task-list-row ${selected?.id === task.id ? "selected" : ""}`}
                   onClick={() => onSelect(task.id)}
                 >
-                  <span className="task-list-row-top">
+                  <span className={`task-list-state state-${task.status}`} />
+                  <span className="task-list-copy">
                     <strong>{task.request}</strong>
-                    <StatusBadge status={task.status} />
+                    <small>
+                      {titleCase(task.kind)} · {formatDate(task.created_at)}
+                    </small>
                   </span>
-                  <span className="task-list-row-meta">
-                    {titleCase(task.kind)} · {formatDate(task.created_at)}
-                  </span>
+                  <StatusBadge status={task.status} />
                 </button>
               ))}
             </div>
           ) : (
             <EmptyState
-              icon={Activity}
-              title="Nothing here yet"
-              description="Try another search or create a new task."
+              icon={Search}
+              title="No matching tasks"
+              description="Try another search or select a different status."
             />
           )}
         </section>
 
-        <section className="surface-card task-detail-card">
+        <section
+          className="surface-card task-inspector"
+          aria-label="Task details"
+        >
           {selected ? (
             <>
-              <div className="task-detail-head">
-                <div>
-                  <p className="eyebrow">
-                    TASK / {shortId(selected.id).toUpperCase()}
-                  </p>
-                  <h2>{selected.request}</h2>
-                </div>
+              <div className="inspector-top">
+                <span>RUN / {shortId(selected.id).toUpperCase()}</span>
                 <StatusBadge status={selected.status} />
               </div>
-              <div className="detail-grid">
-                <div>
-                  <span>Created</span>
-                  <strong>{formatDate(selected.created_at)}</strong>
-                </div>
-                <div>
-                  <span>Session</span>
-                  <strong>{selected.session_id}</strong>
-                </div>
-                <div>
-                  <span>Workflow</span>
-                  <strong>{titleCase(selected.kind)}</strong>
-                </div>
-                <div>
-                  <span>Live events</span>
-                  <strong
-                    className={streamState === "live" ? "text-success" : ""}
+              <div className="task-detail-head">
+                <h2>{selected.request}</h2>
+                <p>
+                  {titleCase(selected.kind)} · Started{" "}
+                  {formatDate(selected.created_at)}
+                </p>
+              </div>
+              <div className="task-detail-meta">
+                <span>
+                  <Clock3 size={15} /> Updated {formatDate(selected.updated_at)}
+                </span>
+                <span>
+                  <FileText size={15} /> {selected.session_id}
+                </span>
+                {selected.status === "running" && (
+                  <span
+                    className={
+                      streamState === "live"
+                        ? "stream-live"
+                        : "stream-reconnecting"
+                    }
                   >
-                    {streamState === "idle" ? "—" : titleCase(streamState)}
-                  </strong>
-                </div>
+                    <Signal size={15} />{" "}
+                    {streamState === "live" ? "Live updates" : "Reconnecting"}
+                  </span>
+                )}
               </div>
               {selected.error && (
                 <Notice kind="error">
-                  Paused after {selected.error}. You can resume this task when
-                  its dependency is available.
+                  Paused after {selected.error}. You can resume when its
+                  dependency is available.
                 </Notice>
               )}
-              <div className="task-actions">
-                {(selected.status === "pending" ||
-                  selected.status === "paused") && (
+              {(selected.status === "pending" ||
+                selected.status === "paused") && (
+                <div className="task-actions">
                   <button
                     type="button"
                     className="button button-primary"
@@ -254,15 +237,12 @@ export function TasksPanel({
                       void act(`/tasks/${encodeURIComponent(selected.id)}/run`)
                     }
                   >
-                    <CirclePlay size={17} />
+                    <CirclePlay size={17} />{" "}
                     {selected.status === "paused" ? "Resume task" : "Run task"}
                   </button>
-                )}
-                {(selected.status === "pending" ||
-                  selected.status === "paused") && (
                   <button
                     type="button"
-                    className="button button-quiet"
+                    className="button button-secondary"
                     disabled={busy}
                     onClick={() =>
                       void act(
@@ -270,29 +250,40 @@ export function TasksPanel({
                       )
                     }
                   >
-                    <Ban size={17} />
-                    Cancel
+                    <Ban size={16} /> Cancel
                   </button>
-                )}
-              </div>
-              <div className="detail-section">
-                <h3>
-                  <TerminalSquare size={18} /> Result
-                </h3>
+                </div>
+              )}
+              <div className="inspector-section">
+                <div className="inspector-section-head">
+                  <span className="section-icon">
+                    <TerminalSquare size={17} />
+                  </span>
+                  <div>
+                    <h3>Result</h3>
+                    <p>Orin&apos;s final response to this task</p>
+                  </div>
+                </div>
                 {selected.result ? (
                   <ResultText text={selected.result} />
                 ) : (
                   <EmptyState
                     icon={Clock3}
-                    title="No result yet"
-                    description="Results appear here when the task finishes."
+                    title="Waiting for a result"
+                    description="The response will appear here when the task finishes."
                   />
                 )}
               </div>
-              <div className="detail-section">
-                <h3>
-                  <Activity size={18} /> Model usage
-                </h3>
+              <div className="inspector-section usage-section">
+                <div className="inspector-section-head">
+                  <span className="section-icon">
+                    <Signal size={17} />
+                  </span>
+                  <div>
+                    <h3>Model usage</h3>
+                    <p>Recorded inference for this run</p>
+                  </div>
+                </div>
                 {usage.length ? (
                   <div className="usage-list">
                     {usage.map((record) => (
@@ -320,9 +311,9 @@ export function TasksPanel({
             </>
           ) : (
             <EmptyState
-              icon={Activity}
-              title="Select a task"
-              description="Choose a task from the list to inspect its progress and result."
+              icon={FileText}
+              title="Choose a task"
+              description="Select a run from the work log to see its result and usage."
             />
           )}
         </section>

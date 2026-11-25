@@ -1,39 +1,55 @@
 "use client";
 
+import { useEffect } from "react";
 import {
-  Activity,
-  CalendarClock,
-  CheckCheck,
-  CircleDot,
-  DatabaseZap,
-  LayoutDashboard,
+  CalendarDays,
+  Command,
+  LayoutGrid,
+  ListChecks,
   LogOut,
+  Plug2,
   RefreshCw,
   Settings2,
-  Sparkles,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { Brand } from "./brand";
 
 export type View =
   "overview" | "tasks" | "connections" | "approvals" | "schedules" | "system";
 
-const navigation: { id: View; label: string; icon: LucideIcon }[] = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "tasks", label: "Tasks", icon: Activity },
-  { id: "connections", label: "Connections", icon: DatabaseZap },
-  { id: "approvals", label: "Approvals", icon: CheckCheck },
-  { id: "schedules", label: "Schedules", icon: CalendarClock },
-  { id: "system", label: "System", icon: Settings2 },
+const navigation: {
+  id: View;
+  label: string;
+  icon: LucideIcon;
+  group: "workspace" | "manage";
+}[] = [
+  { id: "overview", label: "Workbench", icon: LayoutGrid, group: "workspace" },
+  { id: "tasks", label: "Activity", icon: ListChecks, group: "workspace" },
+  {
+    id: "approvals",
+    label: "Approvals",
+    icon: ShieldCheck,
+    group: "workspace",
+  },
+  {
+    id: "schedules",
+    label: "Automations",
+    icon: CalendarDays,
+    group: "manage",
+  },
+  { id: "connections", label: "Connections", icon: Plug2, group: "manage" },
+  { id: "system", label: "System", icon: Settings2, group: "manage" },
 ];
 
 const descriptions: Record<View, string> = {
-  overview: "A clear picture of your local agent.",
-  tasks: "Follow the work Orin is doing.",
-  connections: "See what Orin can access on this device.",
-  approvals: "Review exact actions before they run.",
-  schedules: "Keep recurring work on your terms.",
-  system: "Models, sessions, and runtime health.",
+  overview: "Your next task, recent work, and decisions in one place.",
+  tasks: "Follow work from request to result.",
+  approvals: "Review the exact action before Orin proceeds.",
+  schedules: "Make recurring work predictable.",
+  connections: "See which services this runtime can read.",
+  system: "Observed model health and local sessions.",
 };
 
 export function Shell({
@@ -57,44 +73,68 @@ export function Shell({
   onLogout: () => void;
   children: React.ReactNode;
 }) {
+  const active = navigation.find((item) => item.id === view)!;
+
+  useEffect(() => {
+    document.title = `${active.label} · Orin`;
+  }, [active.label]);
+
+  const links = (group: "workspace" | "manage") =>
+    navigation
+      .filter((item) => item.group === group)
+      .map(({ id, label, icon: Icon }) => (
+        <button
+          key={id}
+          type="button"
+          className={`nav-item ${view === id ? "active" : ""}`}
+          aria-current={view === id ? "page" : undefined}
+          onClick={() => setView(id)}
+        >
+          <Icon size={18} strokeWidth={1.8} />
+          <span>{label}</span>
+          {id === "approvals" && pendingApprovals > 0 && (
+            <span className="nav-count">{pendingApprovals}</span>
+          )}
+        </button>
+      ));
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="brand-mark">
-            <Sparkles size={20} />
+        <div className="sidebar-head">
+          <Brand />
+          <span className="sidebar-edition">PERSONAL AGENT</span>
+        </div>
+        <div className="workspace-switch">
+          <span className="workspace-avatar">
+            {owner.slice(0, 1).toUpperCase()}
           </span>
           <span>
-            orin<span className="brand-period">.</span>
+            <strong>{owner}&apos;s workspace</strong>
+            <small>Local control center</small>
           </span>
         </div>
-        <div className="sidebar-caption">CONTROL CENTER</div>
         <nav className="sidebar-nav" aria-label="Primary navigation">
-          {navigation.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={`nav-item ${view === id ? "active" : ""}`}
-              aria-current={view === id ? "page" : undefined}
-              onClick={() => setView(id)}
-            >
-              <Icon size={18} strokeWidth={1.9} />
-              <span>{label}</span>
-              {id === "approvals" && pendingApprovals > 0 && (
-                <span className="nav-count">{pendingApprovals}</span>
-              )}
-            </button>
-          ))}
+          <div className="nav-group">
+            <p>WORKSPACE</p>
+            {links("workspace")}
+          </div>
+          <div className="nav-group">
+            <p>MANAGE</p>
+            {links("manage")}
+          </div>
         </nav>
         <div className="sidebar-bottom">
-          <div className="local-card">
-            <span className="local-card-icon">
-              <CircleDot size={17} />
+          <div className="sidebar-runtime">
+            <span
+              className={`runtime-indicator ${connected ? "" : "offline"}`}
+            />
+            <span>
+              <strong>
+                {connected ? "Runtime online" : "Runtime unavailable"}
+              </strong>
+              <small>Running on this computer</small>
             </span>
-            <div>
-              <strong>Local runtime</strong>
-              <span>Private to this device</span>
-            </div>
           </div>
           <button type="button" className="sidebar-logout" onClick={onLogout}>
             <LogOut size={16} /> Sign out
@@ -103,16 +143,19 @@ export function Shell({
       </aside>
       <div className="app-main">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">WORKSPACE / {view.toUpperCase()}</p>
-            <h1>{navigation.find((item) => item.id === view)?.label}</h1>
-            <p className="topbar-description">{descriptions[view]}</p>
+          <div className="topbar-heading">
+            <p className="breadcrumb">
+              <Command size={13} /> ORIN <span>/</span>{" "}
+              {active.label.toUpperCase()}
+            </p>
+            <h1>{active.label}</h1>
+            <p>{descriptions[view]}</p>
           </div>
           <div className="topbar-actions">
-            <div className={`connection-pill ${connected ? "" : "offline"}`}>
-              <span className="status-dot" />
-              {connected ? "Local service online" : "Connection lost"}
-            </div>
+            <span className={`connection-pill ${connected ? "" : "offline"}`}>
+              <span className="runtime-indicator" />{" "}
+              {connected ? "Local and ready" : "Connection lost"}
+            </span>
             <button
               className="icon-button"
               type="button"
@@ -120,17 +163,21 @@ export function Shell({
               aria-label="Refresh dashboard"
               onClick={onRefresh}
             >
-              <RefreshCw size={18} />
+              <RefreshCw size={17} />
             </button>
-            <div className="owner-avatar" title={`Signed in as ${owner}`}>
+            <span className="header-avatar" title={`Signed in as ${owner}`}>
               {owner.slice(0, 1).toUpperCase()}
-            </div>
+            </span>
           </div>
         </header>
-        <main className="content-area">{children}</main>
+        <main className="content-area" key={view}>
+          {children}
+        </main>
         <footer className="app-footer">
-          <span>Orin runs on this computer</span>
-          <span>Last updated {formatDate(lastUpdated?.toISOString())}</span>
+          <span>
+            <span className="footer-mark" /> PRIVATE LOCAL RUNTIME
+          </span>
+          <span>Updated {formatDate(lastUpdated?.toISOString())}</span>
         </footer>
       </div>
     </div>

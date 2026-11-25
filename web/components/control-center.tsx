@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import {
   getBootstrap,
   getBrowserSession,
@@ -11,6 +11,7 @@ import {
 import { useDashboard } from "@/lib/use-dashboard";
 import type { BrowserSession, Task } from "@/lib/types";
 import { ApprovalsPanel } from "./approvals-panel";
+import { Brand } from "./brand";
 import { ConnectionsPanel } from "./connections-panel";
 import { OverviewPanel } from "./overview-panel";
 import { PairScreen } from "./pair-screen";
@@ -26,6 +27,7 @@ export function ControlCenter() {
   const [pairingAvailable, setPairingAvailable] = useState(false);
   const [view, setView] = useState<View>("overview");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
   const client = useMemo(
     () => (session ? new OrinClient(session.csrf) : null),
     [session],
@@ -74,12 +76,31 @@ export function ControlCenter() {
     setView("tasks");
   }
 
+  async function createTask(request: string) {
+    if (!client || !session) return;
+    setTaskError(null);
+    try {
+      const created = await client.post<{ id: string }>("/tasks", {
+        session_id: `web:${session.owner}`,
+        request,
+      });
+      setSelectedTaskId(created.id);
+      setView("tasks");
+      await refresh();
+      await client.post(`/tasks/${encodeURIComponent(created.id)}/run`);
+      await refresh();
+    } catch (failure) {
+      setTaskError(
+        failure instanceof Error ? failure.message : "Could not start the task",
+      );
+      await refresh();
+    }
+  }
+
   if (booting)
     return (
       <div className="boot-screen">
-        <span className="brand-mark">
-          <Sparkles size={23} />
-        </span>
+        <Brand />
         <LoaderCircle className="spinning" size={25} />
         <span>Opening Orin…</span>
       </div>
@@ -114,6 +135,9 @@ export function ControlCenter() {
           last available data.
         </Notice>
       )}
+      {taskError && (
+        <Notice kind="error">Task could not start: {taskError}</Notice>
+      )}
       {loading && (
         <div className="loading-line">
           <LoaderCircle className="spinning" size={18} /> Loading your
@@ -125,16 +149,20 @@ export function ControlCenter() {
           data={data}
           onSelectTask={openTask}
           onOpenTasks={() => setView("tasks")}
+          onOpenApprovals={() => setView("approvals")}
+          onOpenConnections={() => setView("connections")}
+          onOpenSchedules={() => setView("schedules")}
+          onCreateTask={createTask}
         />
       )}
       {!loading && view === "tasks" && (
         <TasksPanel
           client={client}
-          owner={session.owner}
           tasks={data.tasks}
           selectedId={selectedTaskId}
           onSelect={setSelectedTaskId}
           refresh={refresh}
+          onCreateTask={createTask}
         />
       )}
       {!loading && view === "connections" && (
