@@ -21,6 +21,9 @@ def test_daily_schedule_handles_dst_gap_and_time_zone():
     normal = next_daily_run(datetime(2026, 11, 25, 0, 0, tzinfo=UTC),
                             "Asia/Kolkata", 9, 0)
     assert normal == datetime(2026, 11, 25, 3, 30, tzinfo=UTC)
+    browser_alias = next_daily_run(datetime(2026, 11, 25, 0, 0, tzinfo=UTC),
+                                   "Asia/Calcutta", 9, 0)
+    assert browser_alias == normal
     with pytest.raises(ValueError, match="timezone"):
         next_daily_run(datetime(2026, 1, 1), "UTC", 9, 0)
 

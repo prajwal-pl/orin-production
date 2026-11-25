@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 through 3 and implemented the Phase 4 controlled-autonomy core. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
+Orin has completed Phases 0 through 3, implemented the Phase 4 controlled-autonomy core, and delivered the Phase 5A local web control center. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -83,14 +83,26 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 
 ## Phase 5 — Build the control center
 
-- [ ] Build the Next.js control center on the existing gateway. Show live activity, task history, failures, and recovery controls.
-- [ ] Add session, memory, skill version, model, and usage views. Expose approval, schedule, and node status controls as their runtime capabilities become available.
-- [ ] Show per-source configuration, granted scopes, token expiry, last successful sync, and partial-failure status; never label an environment token as a verified live connection without a provider check.
-- [ ] Package the interface in Tauri and manage the local Python service lifecycle, including startup, shutdown, restart, and failure reporting.
-- [ ] Support event reconnect and show stale or disconnected status. Verify that task controls remain usable with keyboard navigation.
-- [ ] Keep channel adapters thin. Add Discord and Slack through the same runtime with account linking and channel-specific authorization.
+### 5A — Local web release
 
-**Done when** the desktop app can start the local runtime and an authorized user can inspect, approve, cancel, and recover work from the control center.
+- [x] Create a TypeScript Next.js static-export app in `web/`, with UI components, typed API access, and static assets separated cleanly. Keep FastAPI as the only runtime server.
+- [x] Serve the built UI and existing API from one loopback origin. Start both with one local command; fail clearly when the UI has not been built.
+- [x] Add one-time browser pairing, an HttpOnly local session, session expiry/logout, same-origin and CSRF checks for cookie-authenticated writes. Preserve bearer-token API clients and owner isolation; never embed an API token in browser assets.
+- [x] Show task counts, recent activity, failures, task detail, usage, model health, and source configuration. Label local configuration separately from provider-verified connectivity.
+- [x] Allow task submission, run/resume, and cancellation through the shared runtime. Show event updates with reconnect and a disconnected state.
+- [x] Add review screens for exact action approvals and scheduled jobs, including their status and cancellation controls. Keep dangerous operations behind existing approvals.
+- [x] Make the UI responsive and keyboard usable. Test pairing, authorization, refresh, tasks, approvals, and schedules end to end in a real browser against a local server.
+
+**5A done when** an authorized owner can start one local service, pair a browser at `127.0.0.1`, inspect live state, submit and recover a task, and review approvals without a Node server or cloud-hosted UI.
+
+### 5B — Packaged desktop release
+
+- [ ] Package the same static UI with Tauri and bundle/manage the Python runtime as a sidecar. Show startup, shutdown, restart, and failure status; retain the browser URL as an alternative interface.
+- [ ] Add deeper session, memory, skill version, model, usage, and connection management views. Show token expiry and last successful provider check only when verified data exists.
+- [ ] Add OS notifications and optional tray behavior without creating a second agent runtime.
+- [ ] Keep channel adapters thin. Add Discord and Slack through the shared runtime with account linking and channel-specific authorization when those connections are verified.
+
+**Phase 5 done when** the packaged app starts the local runtime and the same authorized controls work in both desktop and browser views.
 
 ## Phase 6 — Harden and package releases
 

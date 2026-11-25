@@ -101,6 +101,14 @@ neural embeddings, and Hub/Node execution remain future work. The GitHub
 notifications endpoint rejects fine-grained tokens, so its read workflow uses
 a classic token with the `notifications` scope and makes GET requests only.
 
+Phase 5A adds a static Next.js control center served from the same loopback
+FastAPI process as the API. A terminal-issued one-time code pairs one browser
+session for the configured owner; HttpOnly cookies, same-origin checks, and
+CSRF guard browser writes. The UI shows tasks, results, usage, model health,
+locally configured sources, approvals, and schedules. The browser flow was
+tested against a local server with an isolated database. Tauri packaging and
+deeper memory/skill controls remain in 5B.
+
 ## 4. Repository map
 
 | File | Responsibility |
@@ -109,6 +117,7 @@ a classic token with the `notifications` scope and makes GET requests only.
 | `orchestration/bot.py` | Telegram authorization and task adapter |
 | `orchestration/cli.py` | Local CLI |
 | `orchestration/api.py` | Authenticated task and session API, SSE stream |
+| `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Loopback UI launcher, browser pairing, static assets |
 | `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
 | `orchestration/store.py` | SQLite schema migrations and records |
 | `orchestration/github.py` | Notification capability and summary |
@@ -128,6 +137,7 @@ a classic token with the `notifications` scope and makes GET requests only.
 | `orchestration/skills.py` | GitHub priority skill registry and evaluation |
 | `orchestration/schema.py` | Classifier and verifier schemas |
 | `evaluation/` | Synthetic fixtures and comparison benchmark |
+| `web/app`, `web/components`, `web/lib` | Static Next.js pages, control center views, typed API client |
 | `tests/` | Credential-free workflow and adapter tests |
 | `TODO.md` | Phase checklists and completion criteria |
 | `INTEGRATIONS.md` | Integration research and connector roadmap |
@@ -147,9 +157,10 @@ follow-up queues, and daily briefings use the shared
 read graph. Each source has an owner grant and token setting. Daily briefings
 record partial failures and proceed with available sources. Other requests use
 the Phase 0 classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
-message IDs reuse a task. CLI and API call the same `Runtime` methods. The API
-requires a bearer token and a configured owner ID on every route.
-Phase 4 API routes use the same single-owner token. Google sync/search state,
+message IDs reuse a task. CLI, API, and browser control center call the same
+`Runtime` methods. Programmatic API clients use a bearer token and configured
+owner ID; the paired browser uses a local session and CSRF token.
+Phase 4 API routes retain the same owner boundary. Google sync/search state,
 policy/approval state, actions, and schedules use companion SQLite files;
 delegations share the task database. The local schedule worker dispatches
 through `Runtime.submit` and `Runtime.run`. Google write actions require a
@@ -190,6 +201,10 @@ and `ORIN_GITHUB_ALLOWED_USERS` for the GitHub notifications capability. The
 GitHub token must be a classic personal access token with `notifications` scope.
 Set `ORIN_API_TOKEN` for the local API. See README for complete commands and
 configuration. Use `uv run python -m pytest -q` for credential-free tests and
+build the UI with `cd web && npm ci && npm run build`. Start the combined local
+server with `uv run python -m orchestration.control_center` from the project root.
+The terminal prints a one-time pairing code; restarting issues a new code.
+Use
 `uv run python -m evaluation.benchmark` for the scripted comparison. A small
 local Ollama model can be set as `ORIN_FALLBACK_MODEL`. Run
 `uv run python -m evaluation.learning` for the credential-free skill adoption
@@ -356,7 +371,7 @@ write scopes independently.
 | **2. Context engineering** | Token budgeting, compression, retrieval, persistent task state, checkpoint recovery, fallback routing | Implemented; live cloud/local model and GitHub/Telegram checks passed |
 | **3. Adaptive learning** | Owner-scoped memory, GitHub and cross-source briefing skills, evaluator, rollback | Implemented and credential-free end-to-end tested |
 | **4. Autonomy** | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes | Core implemented and credential-free tested; optional account and live write verification pending |
-| **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization, memory/skill/model management | Not started |
+| **5. Interfaces** | Local Next.js static control center, then Tauri shell and deeper management views | 5A implemented and browser tested; 5B pending |
 | **6. Hardening** | Benchmarks, recovery tests, security tests, migrations, backup/restore, installer | Not started |
 | **7. Distributed** | Hub, Node, capability routing, selective sync | Not started |
 
@@ -465,9 +480,11 @@ Do not start with 15 integrations, six agents, and three frontends.
 
 ### Next milestone
 
-Verify optional read adapters and Google write scopes with live owner accounts
-when connected. Then continue Phase 5 on the existing runtime; do not describe
-fixture-only integrations as live supported.
+Implement Phase 5B in `TODO.md`: package the same static control center with
+Tauri and manage the existing Python runtime lifecycle. Keep the local web URL
+as an alternative interface and avoid a second agent runtime.
+Optional read adapters and Google write scopes still need live verification;
+do not describe fixture-only integrations as live supported.
 
 ---
 

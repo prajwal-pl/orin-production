@@ -7,20 +7,22 @@ import secrets
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from orchestration.runtime import Runtime
-from orchestration.integrations import SOURCES, connected_sources
-from orchestration.integrations import authorize_source
 from orchestration.google_oauth import has_refresh_token, refreshed_access_token
 from orchestration.google_writes import WRITE_SOURCES
-from orchestration.local_tools import ScopedFileSystem, ScopedTerminal, IsolatedBrowser
+from orchestration.integrations import MissingCredential, SOURCES, authorize_source, connected_sources
+from orchestration.local_tools import IsolatedBrowser, ScopedFileSystem, ScopedTerminal
 from orchestration.policy import PolicyDenied
-from orchestration.integrations import MissingCredential
+from orchestration.runtime import Runtime
+from orchestration.web_assets import attach_web_assets
+from orchestration.web_auth import COOKIE_NAME, SESSION_SECONDS, web_auth
 
 app = FastAPI(title="Orin", docs_url=None, redoc_url=None, openapi_url=None)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
 
 class TaskRequest(BaseModel):
@@ -125,6 +127,10 @@ class MCPCallRequest(BaseModel):
     arguments: dict = Field(default_factory=dict)
 
 
+class PairRequest(BaseModel):
+    code: str
+
+
 def phase4_error(error: Exception) -> HTTPException:
     if isinstance(error, KeyError):
         return HTTPException(404, "Resource not found")
@@ -135,8 +141,11 @@ def phase4_error(error: Exception) -> HTTPException:
     return HTTPException(502, "Capability failed; inspect its audit status")
 
 
-def authorized_owner(authorization: str | None = Header(default=None),
+def authorized_owner(request: Request,
+                     authorization: str | None = Header(default=None),
                      x_orin_user: str | None = Header(default=None)) -> str:
+    if authorization is None and request.cookies.get(COOKIE_NAME):
+        return web_auth.authorize_cookie(request, x_orin_user).owner
     token = os.getenv("ORIN_API_TOKEN", "")
     if not token or not authorization or not secrets.compare_digest(authorization, f"Bearer {token}"):
         raise HTTPException(401, "Unauthorized")
@@ -151,6 +160,34 @@ def authorized_owner(authorization: str | None = Header(default=None),
 
 def runtime() -> Runtime:
     return Runtime()
+
+
+@app.get("/auth/bootstrap")
+def browser_bootstrap():
+    return {"pairing_available": web_auth.pairing_available()}
+
+
+@app.post("/auth/pair")
+def pair_browser(body: PairRequest, request: Request, response: Response):
+    web_auth.check_origin(request)
+    token, session = web_auth.pair(body.code)
+    response.set_cookie(COOKIE_NAME, token, max_age=SESSION_SECONDS, httponly=True,
+                        samesite="strict", path="/")
+    return {"owner": session.owner, "csrf": session.csrf, "expires_at": session.expires_at}
+
+
+@app.get("/auth/session")
+def browser_session(request: Request):
+    session = web_auth.authorize_cookie(request, None)
+    return {"owner": session.owner, "csrf": session.csrf, "expires_at": session.expires_at}
+
+
+@app.post("/auth/logout")
+def logout_browser(request: Request, response: Response):
+    web_auth.authorize_cookie(request, None)
+    web_auth.logout(request.cookies.get(COOKIE_NAME))
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return {"logged_out": True}
 
 
 @app.post("/tasks")
@@ -700,3 +737,6 @@ async def mcp_call(server_id: str, tool: str, body: MCPCallRequest,
         return observation.__dict__
     except Exception as error:
         raise phase4_error(error) from None
+
+
+attach_web_assets(app)

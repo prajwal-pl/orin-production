@@ -10,8 +10,8 @@ Telegram, instead of yet another chat window.
 > The LLM is not the agent. The LLM is the reasoning engine inside a runtime that
 > owns memory, state, tools, execution, learning, and budgets.
 
-> **Status: Phase 4 controlled autonomy implemented with fixture coverage.**
-> Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub and
+> **Status: Phase 5A local web control center implemented.**
+> Telegram, CLI, a local API, and a browser UI share a SQLite-backed runtime. GitHub and
 > Google read adapters have been checked against live accounts. Optional service
 > adapters and Google write scopes still need live account verification. See
 > [Current status](#current-status).
@@ -126,6 +126,14 @@ automatic retries; Calendar and Drive can be reconciled with read requests.
 Gmail send with an unknown outcome requires manual inspection of Sent mail.
 These write paths have provider-shaped tests; no real Google write was sent.
 
+Phase 5A adds a local browser control center built from a static Next.js export.
+The existing FastAPI process serves both the UI and API at `127.0.0.1`; the
+browser uses a one-time terminal pairing code, an HttpOnly session cookie, and
+CSRF protection. It shows tasks, results, model usage and health, configured
+sources, exact approval requests, and schedules. The configuration label means
+local credential and owner grant are present, not that a provider was just
+contacted. Tauri packaging and deeper memory/skill management remain in 5B.
+
 The GitHub notifications endpoint currently requires a classic personal access
 token with the `notifications` scope. GitHub does not support fine-grained tokens
 for this endpoint. Orin makes GET requests only and limits this capability to
@@ -217,6 +225,24 @@ uv run python -m orchestration.cli "Daily briefing"
 uv run uvicorn orchestration.api:app --host 127.0.0.1
 ```
 
+To use the local control center, build its static assets once and start the
+single Python server. Node.js is needed for the build, not to serve the UI:
+
+```bash
+cd web
+npm ci
+npm run build
+cd ..
+uv run python -m orchestration.control_center
+```
+
+Open the printed `http://127.0.0.1:8000` URL and enter the one-time pairing
+code shown in the same terminal. The browser session expires after 12 hours or
+on sign-out. Restart the local server to issue a new pairing code. The UI and
+API stay on the same loopback origin; no hosted Next.js service is used.
+Set `ORIN_API_USER` to choose the owner (default `local`). The API bearer token
+is for scripts and other clients and is never included in the web build.
+
 The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
 `/start`, `/status TASK_ID`, and `/resume TASK_ID`. Submit an API task with `POST /tasks`, run or
 resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
@@ -224,7 +250,8 @@ stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and
 `GET /sessions/{id}/messages`. Send
 `Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
-headers. The API token is required for every route. Bind the server to localhost.
+headers. The API token is required for programmatic task and control routes;
+the paired browser uses its owner-scoped session instead. Bind the server to localhost.
 
 Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
 `GET /search` and `POST /search/index-local`; `/policy/grants`, `/policy/roots`,
@@ -248,7 +275,9 @@ Memory routes are `POST/GET /memories`, `GET /memories/search?q=...`,
 `GET /skills/{id}`, and `POST /skills/{id}/activate`. Use
 `GET /tasks/{id}/skill` to inspect attribution and
 `POST /tasks/{id}/corrections` to record feedback. Activation is the explicit
-owner review step. The API token and owner header apply to every route.
+owner review step. The API token and owner header apply to these routes for
+programmatic clients; the paired browser session also authorizes same-origin
+requests.
 
 A task paused by a provider or capability failure can be resumed by ID. Work
 already checkpointed by LangGraph is reused. An interrupted process leaves a
@@ -260,6 +289,11 @@ idempotency keys reuse the original task.
 
 ```bash
 uv run python -m pytest -q
+cd web
+npm run typecheck
+npm test
+npm run format:check
+npm run build
 ```
 
 The suite simulates Telegram, HTTP, CLI, GitHub API responses, and process
@@ -297,6 +331,11 @@ check Google write request bodies and single-use approval behavior. The
 credential-free search evaluation runs with
 `uv run python -m evaluation.phase4_search`; its fixture spans Gmail, Drive,
 Calendar, and one approved local note.
+The Phase 5A browser check used an isolated database and the exported UI served
+by FastAPI: pairing, task creation and reload, approval review, daily schedule
+save/cancel, source and model views, and sign-out passed. A second isolated
+browser run completed a real read-only Calendar request and recorded a
+successful `calendar.events.read` execution without exposing event contents.
 
 ## How it works today
 
@@ -306,6 +345,8 @@ Calendar, and one approved local note.
 | `orchestration/bot.py` | Telegram authorization and shared-runtime adapter |
 | `orchestration/cli.py` | Local CLI |
 | `orchestration/api.py` | Authenticated local HTTP and event stream |
+| `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Local UI launcher, browser pairing, static export serving |
+| `web/app`, `web/components`, `web/lib` | Next.js control center, views, and typed API client |
 | `orchestration/runtime.py` | Durable execution and checkpoint recovery |
 | `orchestration/store.py` | Versioned SQLite schema and task records |
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |
@@ -386,6 +427,12 @@ approval (when needed) → versioned skill → rollback available
 
 ## Roadmap
 
+Phase 5 starts with a local web release: Next.js builds static files, and the
+existing FastAPI service serves the UI and API on one loopback origin. Each
+installation keeps its own local data and browser session. Tauri will package
+that same UI and manage the Python service in a later Phase 5 step; it will not
+create a second runtime. See [Phase 5 tasks](TODO.md#phase-5--build-the-control-center).
+
 | Phase | Focus |
 |---|---|
 | **0. Prototype** ✅ | Telegram + LangGraph classify/verify demo |
@@ -393,7 +440,7 @@ approval (when needed) → versioned skill → rollback available
 | **2. Context engineering** ✅ | Token budgeting, bounded context, retrieval, model health, fallback routing, evaluation |
 | **3. Adaptive learning** ✅ | Owner-scoped memory, GitHub priority skill proposals/versioning, evaluator, rollback |
 | **4. Autonomy** ✅ core | Sync/search, scoped tools, MCP, bounded delegation, scheduler, approvals, narrow writes; live optional-account checks pending |
-| **5. Interfaces** | Next.js dashboard, Tauri desktop, activity visualization |
+| **5. Interfaces** ✅ 5A | Local Next.js static control center complete; Tauri packaging and deeper management views remain |
 | **6. Hardening** | Benchmarks, recovery/security tests, migrations, backup, installer |
 | **7. Distributed** | Hub, Node, capability routing, selective encrypted sync |
 
