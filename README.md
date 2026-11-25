@@ -90,6 +90,12 @@ combines configured sources, marks missing sources, and continues when one
 provider fails. Items rotate across sources so one busy inbox does not crowd
 out the others. Direct requests such as “show my unread Gmail inbox”, “recent
 Drive files”, and “upcoming Calendar events” use the corresponding adapter.
+Plain email wording such as “check my last 5 emails” also routes to Gmail.
+Recent inbox requests return up to 10 message headers. A request for unread
+mail from a named sender checks the 50 newest unread inbox headers and says
+when older unread mail remains unchecked. Gmail's `gmail.metadata` scope does
+not permit the provider's sender search query, so Orin does not claim a complete
+sender search unless all unread messages fit in that window.
 Google adapters use real read endpoints and were verified with a live Google
 account on 2026-11-25. See
 [integration research and roadmap](INTEGRATIONS.md) for scope choices, useful

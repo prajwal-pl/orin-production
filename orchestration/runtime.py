@@ -22,7 +22,8 @@ from orchestration.store import TaskStore
 from orchestration.memory import MemoryStore
 from orchestration.skills import SkillRegistry
 from orchestration.skills import BRIEFING_NAME
-from orchestration.integrations import authorize_source, connected_sources, fetch_source, SOURCES, summarize_evidence
+from orchestration.integrations import (authorize_source, connected_sources, fetch_source,
+                                        fetch_gmail_request, plan_gmail_request, SOURCES, summarize_evidence)
 from orchestration.policy import PolicyStore
 from orchestration.actions import ActionStore
 from orchestration.scheduler import ScheduledJobStore
@@ -44,6 +45,7 @@ class NotificationState(TypedDict):
     artifact_path: str
     context_excerpt: str
     final_response: str
+    gmail_response: str
 
 
 def task_kind(request: str) -> str:
@@ -56,7 +58,9 @@ def task_kind(request: str) -> str:
         return "daily_briefing"
     if "github" in lower and "notification" in lower:
         return "github_notifications"
-    if "gmail" in lower and any(word in lower for word in ("inbox", "unread", "messages")):
+    if (re.search(r"\b(?:gmail|e-?mails?|inbox)\b", lower)
+            and re.search(r"\b(?:check|show|list|read|find|last|latest|recent|unread|inbox)\b", lower)
+            and not re.search(r"\b(?:send|draft|reply|forward|delete|archive|mark|label)\b", lower)):
         return "gmail_inbox"
     if "drive" in lower and any(word in lower for word in ("files", "documents", "recent")):
         return "drive_recent"
@@ -156,8 +160,10 @@ class Runtime:
             ModelRecord(**record) for record in self.store.load_model_records()
         ])
         for name in configured_models():
-            record = self.router.records.setdefault(name, ModelRecord(name))
-            self.store.save_model_record(asdict(record))
+            if name not in self.router.records:
+                record = ModelRecord(name)
+                self.router.records[name] = record
+                self.store.save_model_record(asdict(record))
 
     async def submit(self, owner: str, session_id: str, request: str,
                      idempotency_key: str | None = None) -> dict:
@@ -255,6 +261,7 @@ class Runtime:
                         self.store.record_step(task_id, "fetch", "started")
                         kind = task["kind"]
                         statuses: dict[str, str] = {}
+                        gmail_summary = ""
                         if kind == "github_notifications":
                             try:
                                 items = await fetch_notifications()
@@ -282,6 +289,16 @@ class Runtime:
                                 items.extend(fetched)
                                 statuses[source] = "completed"
                                 self.store.record_execution(task_id, spec.capability, "completed")
+                        elif kind == "gmail_inbox" and (plan := plan_gmail_request(task["request"])):
+                            try:
+                                read = await fetch_gmail_request(owner, plan)
+                                items = read.items
+                                gmail_summary = read.summary
+                            except Exception:
+                                self.store.record_execution(task_id, SOURCES["gmail"].capability, "failed")
+                                raise
+                            self.store.record_execution(task_id, SOURCES["gmail"].capability, "completed")
+                            statuses["gmail"] = "completed"
                         else:
                             source = KIND_SOURCE[kind]
                             try:
@@ -308,9 +325,13 @@ class Runtime:
                             "source_status": statuses,
                             "artifact_path": str(observation.artifact_path),
                             "context_excerpt": observation.context_text(),
+                            "gmail_response": gmail_summary,
                         }
 
                     async def summarize(state: NotificationState):
+                        if state.get("gmail_response"):
+                            self.store.record_step(task_id, "summarize_local", "completed")
+                            return {"final_response": state["gmail_response"]}
                         if task["kind"] == "meeting_prep":
                             return {"final_response": _meeting_summary(owner, task["request"], state["observations"])}
                         if task["kind"] == "follow_up":
@@ -379,7 +400,7 @@ class Runtime:
                                      "notifications": [], "observations": [], "source_status": {},
                                      "artifact_path": "",
                                      "context_excerpt": "",
-                                     "final_response": ""}
+                                     "final_response": "", "gmail_response": ""}
                 else:
                     graph = prototype_builder.compile(checkpointer=saver)
                     initial_state = {

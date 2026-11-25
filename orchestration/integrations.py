@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
@@ -63,6 +64,34 @@ SOURCES = {
 
 class MissingCredential(RuntimeError):
     """The owner has permission to use a source but has not connected it."""
+
+
+@dataclass(frozen=True)
+class GmailReadPlan:
+    recent_count: int
+    unread_sender: str
+
+
+@dataclass(frozen=True)
+class GmailReadResult:
+    items: list[dict]
+    summary: str
+
+
+def plan_gmail_request(request: str) -> GmailReadPlan | None:
+    """Recognize the narrow metadata reads that need more than the default unread inbox."""
+    count = re.search(
+        r"\b(?:(?:last|latest|recent)\s+(\d{1,2})|(\d{1,2})\s+(?:last|latest|recent))\s+(?:e-?mails?|messages)\b",
+        request, re.IGNORECASE,
+    )
+    recent_count = min(int(count.group(1) or count.group(2)), 10) if count else 0
+    sender_match = re.search(
+        r"\bunread\b[^.!?\n]{0,90}?\bfrom\s+([^.!?,;\n]{2,80})",
+        request, re.IGNORECASE,
+    )
+    sender = sender_match.group(1).strip() if sender_match else ""
+    sender = re.split(r"\s+\b(?:and|also|then)\b\s+", sender, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+    return GmailReadPlan(recent_count, sender) if recent_count or sender else None
 
 
 def connected_sources(owner: str) -> list[str]:
@@ -132,6 +161,81 @@ async def fetch_gmail(token: str, client: httpx.AsyncClient | None = None) -> li
             return await work(client)
     async with httpx.AsyncClient(timeout=15, follow_redirects=False) as http:
         async with asyncio.timeout(20):
+            return await work(http)
+
+
+async def fetch_gmail_request(owner: str, plan: GmailReadPlan,
+                              client: httpx.AsyncClient | None = None) -> GmailReadResult:
+    """Read recent inbox headers and scan a bounded unread window without Gmail search scope."""
+    authorize_source(owner, "gmail")
+    token = os.getenv(SOURCES["gmail"].token_env, "").strip()
+    if not token:
+        if not has_refresh_token(owner, "gmail"):
+            raise MissingCredential("gmail is not connected")
+        token = await refreshed_access_token(owner, "gmail")
+
+    async def work(http: httpx.AsyncClient) -> GmailReadResult:
+        async def list_ids(labels: list[str], limit: int) -> tuple[list[dict], bool]:
+            params = [("labelIds", label) for label in labels] + [("maxResults", str(limit))]
+            body = await _request_json(http, "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                                       token, params)
+            messages = body.get("messages") or []
+            if not isinstance(messages, list):
+                raise ValueError("Unexpected Gmail message list")
+            return messages[:limit], not bool(body.get("nextPageToken"))
+
+        semaphore = asyncio.Semaphore(8)
+
+        async def metadata(message: dict) -> Evidence | None:
+            message_id = _safe(message.get("id"), 100)
+            if not message_id:
+                return None
+            async with semaphore:
+                body = await _request_json(
+                    http, f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{quote(message_id, safe='')}",
+                    token, [("format", "metadata"), ("metadataHeaders", "Subject"),
+                            ("metadataHeaders", "From"), ("metadataHeaders", "Date")],
+                )
+            headers = {str(header.get("name", "")).lower(): _safe(header.get("value"))
+                       for header in (body.get("payload") or {}).get("headers", [])}
+            thread_id = _safe(message.get("threadId") or body.get("threadId") or message_id, 100)
+            return Evidence("gmail", message_id, headers.get("subject") or "(no subject)",
+                            headers.get("from", ""),
+                            f"https://mail.google.com/mail/u/0/#inbox/{quote(thread_id, safe='')}",
+                            headers.get("date", ""))
+
+        lines: list[str] = []
+        all_items: dict[str, Evidence] = {}
+        if plan.recent_count:
+            ids, _ = await list_ids(["INBOX"], plan.recent_count)
+            recent = [item for item in await asyncio.gather(*(metadata(message) for message in ids)) if item]
+            lines.append(f"Latest {len(recent)} inbox messages (headers only):")
+            for item in recent:
+                all_items[item.source_id] = item
+                lines.append(f"- {_safe(item.title)} — {_safe(item.detail)} {item.url}")
+            if not recent:
+                lines.append("- No inbox messages found.")
+
+        if plan.unread_sender:
+            ids, complete = await list_ids(["INBOX", "UNREAD"], 50)
+            unread = [item for item in await asyncio.gather(*(metadata(message) for message in ids)) if item]
+            matches = [item for item in unread if plan.unread_sender.casefold() in item.detail.casefold()]
+            lines.append(f"Unread inbox messages from {plan.unread_sender}:")
+            for item in matches:
+                all_items[item.source_id] = item
+                lines.append(f"- {_safe(item.title)} — {_safe(item.detail)} {item.url}")
+            if not matches:
+                lines.append("- None found." if complete else
+                             f"- None in the {len(unread)} newest unread messages checked; older unread mail was not checked.")
+            elif not complete:
+                lines.append(f"Checked the {len(unread)} newest unread messages; older unread mail may contain more matches.")
+        return GmailReadResult([asdict(item) for item in all_items.values()], "\n".join(lines))
+
+    if client is not None:
+        async with asyncio.timeout(30):
+            return await work(client)
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False) as http:
+        async with asyncio.timeout(30):
             return await work(http)
 
 

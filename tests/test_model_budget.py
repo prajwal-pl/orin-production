@@ -9,7 +9,9 @@ from orchestration.agents import (
     invoke_result,
 )
 from orchestration.model_budget import BudgetExhausted, ModelRecord, ModelRouter, TaskBudget
+from orchestration.runtime import Runtime
 from orchestration.schema import NotificationSummary
+from orchestration.store import TaskStore
 
 
 class ScriptedBackend:
@@ -24,6 +26,19 @@ class ScriptedBackend:
             raise outcome
         return ProviderResult(model, NotificationSummary(summary=outcome),
                               ModelCapabilities(True, None), 7, 3)
+
+
+def test_repeated_runtime_reads_do_not_rewrite_model_record(monkeypatch, tmp_path):
+    monkeypatch.setenv("ORIN_MODEL", "scripted:primary")
+    monkeypatch.setenv("ORIN_FALLBACK_MODEL", "")
+    path = tmp_path / "orin.db"
+    Runtime(path)
+
+    def unexpected_write(self, record):
+        raise AssertionError("Existing model records should not be rewritten on dashboard reads")
+
+    monkeypatch.setattr(TaskStore, "save_model_record", unexpected_write)
+    Runtime(path)
 
 
 def models(monkeypatch):

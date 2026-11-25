@@ -63,6 +63,10 @@ unread notifications and prioritizes attention items. Gmail inbox headers,
 Drive file metadata, and Calendar events use separate read-only Google adapters;
 daily briefings combine available sources and report missing or failed ones.
 Items rotate across sources to avoid one busy inbox hiding the rest.
+Plain email read wording reaches Gmail. Recent inbox requests return up to ten
+headers; sender checks scan the 50 newest unread inbox headers and disclose
+when older unread mail was not checked because `gmail.metadata` forbids Gmail's
+search query parameter. The combined request was live-read on 2026-11-25.
 Google adapters have mocked HTTP tests and were live-authorized and read on
 2026-11-25.
 Other GitHub and Gmail actions still use the Phase 0 mock graph. Credential-free tests cover channel

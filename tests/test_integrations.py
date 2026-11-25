@@ -11,8 +11,9 @@ from orchestration import runtime
 from orchestration import integrations
 from orchestration import agents
 from orchestration.api import app
-from orchestration.integrations import fetch_calendar, fetch_drive, fetch_gmail
-from orchestration.runtime import Runtime, task_reply
+from orchestration.integrations import (GmailReadResult, fetch_calendar, fetch_drive, fetch_gmail,
+                                        fetch_gmail_request, plan_gmail_request)
+from orchestration.runtime import Runtime, task_kind, task_reply
 from orchestration.skills import BRIEFING_NAME
 
 
@@ -57,6 +58,68 @@ async def test_google_adapters_use_read_only_metadata_requests():
     assert len(requests) == 4
 
 
+def test_natural_email_read_routes_to_gmail_without_routing_writes():
+    request = "check 5 last emails, and check if I have any unread emails from Andrew Tate"
+    assert task_kind(request) == "gmail_inbox"
+    assert plan_gmail_request(request).recent_count == 5
+    assert plan_gmail_request(request).unread_sender == "Andrew Tate"
+    assert task_kind("send an email to Andrew Tate") == "prototype"
+
+
+@pytest.mark.asyncio
+async def test_gmail_metadata_read_answers_recent_and_sender_with_scan_limit(monkeypatch):
+    monkeypatch.setenv("ORIN_GMAIL_ALLOWED_USERS", "local")
+    monkeypatch.setenv("ORIN_GMAIL_ACCESS_TOKEN", "test-token")
+    calls = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert request.method == "GET" and "q" not in request.url.params
+        if request.url.path.endswith("/messages"):
+            labels = request.url.params.get_list("labelIds")
+            if labels == ["INBOX"]:
+                assert request.url.params["maxResults"] == "5"
+                return httpx.Response(200, json={"messages": [{"id": "recent"}]})
+            assert labels == ["INBOX", "UNREAD"]
+            assert request.url.params["maxResults"] == "50"
+            return httpx.Response(200, json={"messages": [{"id": "unread"}],
+                                             "nextPageToken": "more"})
+        message_id = request.url.path.rsplit("/", 1)[-1]
+        sender = "Andrew Tate <andrew@example.test>" if message_id == "unread" else "Colleague <c@example.test>"
+        return httpx.Response(200, json={"payload": {"headers": [
+            {"name": "Subject", "value": message_id.title()},
+            {"name": "From", "value": sender},
+        ]}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        result = await fetch_gmail_request("local", plan_gmail_request(
+            "check 5 last emails, and check if I have any unread emails from Andrew Tate"), client)
+    assert "Latest 1 inbox messages" in result.summary
+    assert "Unread inbox messages from Andrew Tate" in result.summary
+    assert "older unread mail may contain more matches" in result.summary
+    assert {item["source_id"] for item in result.items} == {"recent", "unread"}
+    assert len(calls) == 4
+
+
+@pytest.mark.asyncio
+async def test_gmail_sender_absence_is_limited_when_unread_pages_remain(monkeypatch):
+    monkeypatch.setenv("ORIN_GMAIL_ALLOWED_USERS", "local")
+    monkeypatch.setenv("ORIN_GMAIL_ACCESS_TOKEN", "test-token")
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return httpx.Response(200, json={"messages": [{"id": "other"}], "nextPageToken": "more"})
+        return httpx.Response(200, json={"payload": {"headers": [
+            {"name": "From", "value": "Someone Else <other@example.test>"}]}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        result = await fetch_gmail_request("local", plan_gmail_request(
+            "check unread emails from Andrew Tate"), client)
+    assert "None in the 1 newest unread messages checked" in result.summary
+    assert "older unread mail was not checked" in result.summary
+    assert result.items == []
+
+
 @pytest.fixture
 def integration_env(monkeypatch, tmp_path):
     path = tmp_path / "orin.db"
@@ -74,6 +137,36 @@ def integration_env(monkeypatch, tmp_path):
     monkeypatch.setenv("ORIN_API_TOKEN", "api-test-token")
     monkeypatch.setenv("ORIN_API_USER", "local")
     return path
+
+
+def test_email_request_runs_through_api_without_mock_or_model(integration_env, monkeypatch):
+    async def fake_read(owner, plan):
+        assert owner == "local" and plan.recent_count == 5
+        assert plan.unread_sender == "Andrew Tate"
+        return GmailReadResult([{"source": "gmail", "source_id": "mail-1",
+                                 "title": "Project update", "detail": "Andrew Tate <a@example.test>",
+                                 "url": "https://mail.google.com/mail/u/0/#inbox/mail-1",
+                                 "occurred_at": ""}],
+                               "Latest 1 inbox messages (headers only):\n"
+                               "- Project update — Andrew Tate <a@example.test>\n"
+                               "Unread inbox messages from Andrew Tate:\n"
+                               "- Project update — Andrew Tate <a@example.test>")
+
+    monkeypatch.setattr(runtime, "fetch_gmail_request", fake_read)
+    headers = {"Authorization": "Bearer api-test-token", "X-Orin-User": "local"}
+    with TestClient(app) as client:
+        created = client.post("/tasks", json={"session_id": "email-check",
+                        "request": "check 5 last emails, and check if I have any unread emails from Andrew Tate"},
+                        headers=headers)
+        assert created.status_code == 200
+        task_id = created.json()["id"]
+        ran = client.post(f"/tasks/{task_id}/run", headers=headers)
+        assert ran.status_code == 200
+        task = ran.json()
+        assert task["kind"] == "gmail_inbox" and task["status"] == "completed"
+        assert "Unread inbox messages from Andrew Tate" in task["result"]
+        assert "mock" not in task["result"].lower()
+        assert client.get(f"/tasks/{task_id}/usage", headers=headers).json() == []
 
 
 @pytest.mark.asyncio
