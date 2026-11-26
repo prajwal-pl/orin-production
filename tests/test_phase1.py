@@ -76,7 +76,7 @@ def test_authenticated_api_task_flow(local_db, monkeypatch):
     result = client.post(f"/tasks/{task_id}/run", headers=headers)
     assert result.status_code == 200
     assert result.json()["status"] == "completed"
-    assert "mock actions only" in result.json()["result"]
+    assert "read-only workflows" in result.json()["result"]
     assert client.get(f"/tasks/{task_id}", headers={**headers, "X-Orin-User": "bob"}).status_code == 403
     assert client.get("/tasks", headers=headers).json()[0]["id"] == task_id
 

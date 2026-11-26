@@ -69,7 +69,10 @@ when older unread mail was not checked because `gmail.metadata` forbids Gmail's
 search query parameter. The combined request was live-read on 2026-11-25.
 Google adapters have mocked HTTP tests and were live-authorized and read on
 2026-11-25.
-Other GitHub and Gmail actions still use the Phase 0 mock graph. Credential-free tests cover channel
+Other GitHub and Gmail actions still use the Phase 0 mock graph. Unrecognized
+free-form requests return an explicit capability fallback, and `/help` or “what
+can you do?” lists only connected sources and implemented read workflows. A
+general free-form planner is not implemented. Credential-free tests cover channel
 entry points, API authorization, notification fetching, and checkpoint recovery.
 
 Bounded context selects relevant session messages and tool excerpts while
@@ -100,8 +103,8 @@ approvals, scoped local tools, stdio MCP trust, durable schedules, and bounded
 child tasks. Narrow Gmail send, Calendar event create, and Drive folder create
 actions stop on ambiguous provider responses and have provider-shaped tests.
 The optional Notion, Todoist, Slack, and Microsoft Graph read adapters and
-Google write scopes have not been live verified. General skill synthesis,
-neural embeddings, and Hub/Node execution remain future work. The GitHub
+Google write scopes have not been live verified. General free-form planning,
+skill synthesis, neural embeddings, and Hub/Node execution remain future work. The GitHub
 notifications endpoint rejects fine-grained tokens, so its read workflow uses
 a classic token with the `notifications` scope and makes GET requests only.
 
@@ -422,7 +425,8 @@ Do not start with 15 integrations, six agents, and three frontends.
 - Gmail inbox headers, Drive metadata, and Calendar event reads passed live
   account checks on 2026-11-25. Optional source reads and narrow Google writes
   have only credential-free provider tests. Other GitHub/Gmail requests remain
-  mock executions.
+  mock executions; unrecognized free-form requests return a capability/help
+  response instead of claiming an action ran.
 - Google uses desktop OAuth with PKCE, independent scopes and OS credential
   storage. The External Testing refresh tokens expire after seven days. The
   capability API reports local configuration, not current provider acceptance.

@@ -69,18 +69,27 @@ async def verification_agent(state: GraphState):
 
 def mock_github_task(state: GraphState):
     logger.info("Mock GitHub task executed")
-    return {"execution_status": "completed", "execution_result": {"message": "GitHub mock task executed. No GitHub action was performed."}}
+    return {"execution_status": "completed", "execution_result": {
+        "message": "GitHub mock task executed; no GitHub action was performed. "
+                   "I can read notifications; say 'summarize my GitHub notifications'."}}
 
 
 def mock_gmail_task(state: GraphState):
     logger.info("Mock Gmail task executed")
-    return {"execution_status": "completed", "execution_result": {"message": "Gmail mock task executed. No email action was performed."}}
+    return {"execution_status": "completed", "execution_result": {
+        "message": "Gmail mock task executed; no email action was performed. "
+                   "I can read inbox headers; say 'show my unread Gmail inbox'."}}
 
 
 def other_task(state: GraphState):
     return {
         "execution_status": "unsupported",
-        "final_response": "I can currently demonstrate Gmail and GitHub requests with mock actions only.",
+        "final_response": (
+            "I don't have a real action for that request yet. I can run read-only "
+            "workflows such as a daily briefing, Gmail inbox headers, Drive metadata, "
+            "Calendar events, and GitHub notifications. Ask 'what can you do?' for the "
+            "current list."
+        ),
     }
 
 

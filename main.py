@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from orchestration.agents import configured_models
-from orchestration.bot import DENIED_REPLY, allowed_user_ids, is_authorized, safe_reply, telegram_bot_message, telegram_task_status, telegram_resume_task
+from orchestration.bot import DENIED_REPLY, allowed_user_ids, is_authorized, safe_reply, telegram_bot_message, telegram_help, telegram_task_status, telegram_resume_task
 
 load_dotenv()
 
@@ -33,6 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def build_application(token: str) -> Application:
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", telegram_help))
     application.add_handler(CommandHandler("status", telegram_task_status))
     application.add_handler(CommandHandler("resume", telegram_resume_task))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_message))

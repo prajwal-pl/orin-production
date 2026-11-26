@@ -25,13 +25,17 @@ DEFAULT_MODEL = "openrouter:nvidia/nemotron-3.5-lightning:free"
 PROMPTS = {
     "classifier": (
         "Classify the user's request as gmail-task, github-task, or other. "
-        "Extract intent and task arguments. The Gmail and GitHub actions are mock demonstrations."
+        "Extract intent and task arguments. The gmail-task and github-task branches are "
+        "legacy mock demonstrations; they never execute an external action. Return other "
+        "for requests that are not clearly one of those two categories."
     ),
     "verifier": (
         "Review the request and execution outcome. Return status pass, retry, or fail. "
         "Use retry only for a recoverable verification problem and fail for a terminal problem. "
-        "feedback, a verification_result dictionary, and a user-facing final_response. "
-        "A canned mock result is only evidence that the mock ran, not that an external action happened."
+        "Return feedback, a verification_result dictionary, and a user-facing final_response. "
+        "A canned mock result is only evidence that the mock ran, not that an external action "
+        "happened. If the execution result says the action is a mock or unsupported, do not "
+        "claim an external action; state the limitation and suggest a supported read request."
     ),
     "notification_summarizer": (
         "Summarize GitHub notifications clearly and concisely. Prioritize mentions, assignments, "

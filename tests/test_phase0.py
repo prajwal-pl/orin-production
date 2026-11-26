@@ -31,7 +31,7 @@ async def test_routing_through_telegram(monkeypatch, telegram_update, kind, expe
     await bot.telegram_bot_message(telegram_update, None)
     reply = telegram_update.message.reply_text.await_args.args[0]
     if expected == "other":
-        assert "mock actions only" in reply
+        assert "read-only workflows" in reply
         assert calls == ["classifier"]
     else:
         assert reply == "Mock complete"
@@ -159,7 +159,7 @@ def test_application_registers_handlers(monkeypatch):
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "123")
     monkeypatch.setenv("OPENROUTER_API_KEY", "placeholder")
     application = main.build_application(main.validate_configuration())
-    assert len(application.handlers[0]) == 4
+    assert len(application.handlers[0]) == 5
 
 
 @pytest.mark.asyncio

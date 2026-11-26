@@ -1,6 +1,6 @@
 # Orin development checklist
 
-Orin has completed Phases 0 through 3, implemented the Phase 4 controlled-autonomy core, and delivered the Phase 5B desktop core and management views. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
+Orin has completed Phases 0 through 3, implemented the Phase 4 controlled-autonomy core, and delivered the Phase 5B desktop core and management views. Telegram, CLI, and a local API share a SQLite-backed runtime. GitHub notifications, Gmail headers, Drive metadata, and Calendar events have live-tested read-only adapters. Phase 4 adds incremental metadata sync, cited search, policy and approvals, bounded tools, schedules, delegation, and narrow Google writes with credential-free end-to-end tests. Optional provider adapters and Google write scopes have not been verified with live accounts. Other GitHub and Gmail requests still use mock actions; unrecognized free-form requests now return an explicit capability/help response. Checked items describe implemented behavior; unchecked items identify work that still needs evidence or implementation.
 
 The phase numbering follows the [README roadmap](README.md#roadmap) and [project architecture](AGENTS.md#7-target-architecture-north-star). Keep one Python runtime across channels and deployment profiles. The first portfolio milestone is a read-only GitHub workflow with durable execution and measurable model routing, delivered across Phases 1 and 2.
 
@@ -78,6 +78,8 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 - [x] Add durable scheduled jobs with time-zone handling, cancellation, missed-run behavior, and duplicate-run prevention.
 - [x] Add selective delegation within the shared runtime. Bound delegated read capabilities and inference budgets, and track child task progress and cancellation.
 - [x] Test approval bypass attempts, workspace escape attempts, untrusted tool content, and retries after an ambiguous external write.
+- [x] Add a shared capability-help response (Telegram `/help` and “what can you do?”) that lists only connected read sources, and replace the stale Phase 0 fallback text with an explicit unsupported response.
+- [ ] Replace the Phase 0 classifier/mock fallback with a capability-aware planner that maps free-form requests to implemented read workflows and refuses unsupported actions explicitly.
 
 **Core done when** scheduled and delegated workflows obey permissions and budgets, and execution history records each action and approval. This is covered by credential-free tests and a fictional Aurora launch API scenario. Live optional-account and Google-write verification remain open above.
 

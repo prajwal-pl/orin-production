@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from orchestration.graph import graph
 from orchestration.nodes import GraphState
-from orchestration.runtime import Runtime, task_reply
+from orchestration.runtime import Runtime, capability_help, task_reply
 
 logger = logging.getLogger(__name__)
 PROVIDER_ERROR_REPLY = "I could not process that request right now. Please try again later."
@@ -55,10 +55,24 @@ async def telegram_bot_message(update: Update, context: ContextTypes.DEFAULT_TYP
         task = await service.submit(owner, session_id, update.message.text, key)
         result = await service.run(owner, task["id"])
         reply = task_reply(result)
+    except PermissionError:
+        logger.warning("Telegram request denied")
+        reply = "This capability is not enabled for your account."
+    except KeyError:
+        reply = "Task not found."
     except Exception:
         logger.error("Telegram request failed")
         reply = PROVIDER_ERROR_REPLY
     await safe_reply(update.message, reply)
+
+
+async def telegram_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    await safe_reply(update.message, capability_help(str(update.effective_user.id)))
 
 
 async def telegram_task_status(update: Update, context: ContextTypes.DEFAULT_TYPE):

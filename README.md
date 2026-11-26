@@ -51,8 +51,11 @@ and LangGraph checkpoints. Telegram, a local CLI, and an authenticated localhost
 API submit to the same runtime. A request containing both “GitHub” and
 “notifications” fetches unread notifications, groups them by repository, and
 prioritizes mentions, assignments, and review requests with source links. This
-summary uses deterministic rules. Other GitHub requests still run the Phase 0
-mock graph.
+summary uses deterministic rules. Other GitHub requests still use the Phase 0
+fallback, which now states the limitation and points to the real read workflows.
+`/help` or “what can you do?” returns the connected sources and supported read
+requests without a model call. A general free-form planner is not implemented
+yet, so unrecognized requests are not executed.
 
 Phase 2 adds bounded context selection, local artifacts for tool output, a
 per-task inference budget, model health and usage records, and fallback routing.
@@ -262,7 +265,9 @@ are in its README. The launcher can stop or restart its sidecar; it does not
 change the Telegram, CLI, or browser runtime contract.
 
 The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
-`/start`, `/status TASK_ID`, and `/resume TASK_ID`. Submit an API task with `POST /tasks`, run or
+`/start`, `/help`, `/status TASK_ID`, and `/resume TASK_ID`. `/help` or
+“what can you do?” lists the owner's connected read sources and the requests
+that actually execute. Submit an API task with `POST /tasks`, run or
 resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
 stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and

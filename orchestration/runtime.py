@@ -36,6 +36,51 @@ from orchestration.mcp_registry import MCPRegistry
 
 logger = logging.getLogger(__name__)
 
+_HELP_INTENT = re.compile(
+    r"^(?:/help|help|what can you (?:do|help with)(?: for me)?|"
+    r"what are your (?:capabilities|features)|what are you capable of|"
+    r"how can you help(?: me)?|what do you do|commands|list your commands)"
+    r"[\s?.!]*$",
+    re.IGNORECASE,
+)
+_HELP_SOURCES = {
+    "github": ("GitHub", "Summarize my GitHub notifications"),
+    "gmail": ("Gmail", "Show my unread Gmail inbox"),
+    "drive": ("Drive", "Show my recent Drive files"),
+    "calendar": ("Calendar", "What's on my calendar today?"),
+}
+
+
+def capability_help(owner: str) -> str:
+    """Explain only what this owner can actually run, without a model call."""
+    connected = [key for key in _HELP_SOURCES if key in set(connected_sources(owner))]
+    lines = ["I run read-only workflows on this local runtime."]
+    if connected:
+        lines.append("Connected sources: " + ", ".join(
+            _HELP_SOURCES[key][0] for key in connected) + ".")
+        lines.append("Try:")
+        lines.extend(f"- {_HELP_SOURCES[key][1]}" for key in connected)
+        lines.append("- Daily briefing")
+        if "calendar" in connected:
+            lines.append("- Prepare me for my next meeting")
+        if {"gmail", "github", "calendar"} & set(connected):
+            lines.append("- Find my follow-ups")
+    else:
+        lines.append(
+            "No read source is connected for this account yet. Connect Gmail, Drive, "
+            "Calendar, or GitHub with the setup commands in the README."
+        )
+    lines.append(
+        "Unrecognized free-form requests are not executed; a general planner is not "
+        "implemented yet."
+    )
+    lines.append(
+        "Approvals, schedules, local tools, and MCP are managed from the local control "
+        "center or API."
+    )
+    return "\n".join(lines)
+
+
 # Task IDs currently executing in this process. A cancelled request can leave a
 # worker PID recorded while no coroutine is running; this set distinguishes a
 # live run from a stale claim without adding a background heartbeat.
@@ -80,6 +125,8 @@ class NotificationState(TypedDict):
 
 def task_kind(request: str) -> str:
     lower = request.lower()
+    if _HELP_INTENT.fullmatch(lower.strip()):
+        return "help"
     if any(phrase in lower for phrase in ("meeting prep", "prepare for my meeting", "prepare me for")):
         return "meeting_prep"
     if any(phrase in lower for phrase in ("follow-up", "follow up", "followup queue")):
@@ -212,6 +259,8 @@ class Runtime:
 
     @staticmethod
     def _required_capabilities(owner: str, kind: str) -> set[str]:
+        if kind == "help":
+            return set()
         if kind in KIND_SOURCE:
             return {SOURCES[KIND_SOURCE[kind]].capability}
         if kind in {"daily_briefing", "meeting_prep", "follow_up"}:
@@ -272,6 +321,11 @@ class Runtime:
                 self.store.transition(task_id, owner, ("running",), "paused",
                                       error="Interrupted")
             task = self.store.get_task(task_id, owner)
+        if task["kind"] == "help":
+            self.store.record_step(task_id, "capability_help", "completed")
+            self.store.transition(task_id, owner, ("pending", "paused"), "completed",
+                                  capability_help(owner))
+            return self.store.get_task(task_id, owner)
         saved_budget = json.loads(task["budget_state"] or "null")
         budget = TaskBudget.from_snapshot(saved_budget) if saved_budget else TaskBudget(
             max_calls=max_model_calls if delegated else int(os.getenv("ORIN_TASK_MODEL_CALLS", "3")),
