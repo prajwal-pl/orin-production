@@ -5,6 +5,7 @@ import logging
 import os
 import json
 import re
+import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,35 @@ from orchestration.productivity import prepare_meeting, follow_up_queue
 from orchestration.mcp_registry import MCPRegistry
 
 logger = logging.getLogger(__name__)
+
+# Task IDs currently executing in this process. A cancelled request can leave a
+# worker PID recorded while no coroutine is running; this set distinguishes a
+# live run from a stale claim without adding a background heartbeat.
+_ACTIVE_RUNS: set[str] = set()
+_ACTIVE_RUNS_LOCK = threading.Lock()
+
+
+def _run_active(task_id: str) -> bool:
+    with _ACTIVE_RUNS_LOCK:
+        return task_id in _ACTIVE_RUNS
+
+
+def _mark_run(task_id: str, active: bool) -> None:
+    with _ACTIVE_RUNS_LOCK:
+        if active:
+            _ACTIVE_RUNS.add(task_id)
+        else:
+            _ACTIVE_RUNS.discard(task_id)
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 class NotificationState(TypedDict):
@@ -131,6 +161,9 @@ def _follow_up_summary(owner: str, items: list[dict]) -> str:
 def task_reply(task: dict) -> str:
     if task.get("result"):
         return task["result"]
+    if task["status"] == "paused" and task.get("error") in {"Cancelled", "Interrupted"}:
+        return (f"Task {task['id']} was interrupted before it finished. "
+                f"Resume it with /resume {task['id']} or from the control center.")
     if task["status"] == "paused" and task.get("error") == "BudgetExhausted":
         return f"Task {task['id']} is paused because its model budget is exhausted. Increase the budget before resuming."
     if task["status"] == "paused" and task.get("error") == "ProviderCallError":
@@ -219,13 +252,26 @@ class Runtime:
             raise PermissionError("Task budget overrides require a delegated task")
         if task["status"] in ("completed", "cancelled"):
             return task
-        if task["status"] == "running" and task["worker_pid"]:
-            try:
-                os.kill(task["worker_pid"], 0)
-            except ProcessLookupError:
-                self.store.transition(task_id, owner, ("running",), "paused")
-            except PermissionError:
-                pass
+        if task["status"] == "running":
+            pid = task.get("worker_pid")
+            if pid is None or pid <= 0:
+                self.store.transition(task_id, owner, ("running",), "paused",
+                                      error="Interrupted")
+            elif pid != os.getpid():
+                if _pid_alive(pid):
+                    # Another worker process owns this run. Do not steal it.
+                    return task
+                self.store.transition(task_id, owner, ("running",), "paused",
+                                      error="Interrupted")
+            elif _run_active(task_id):
+                # This process is already executing the task in another coroutine.
+                return task
+            else:
+                # The worker PID is ours, but no coroutine is running the task:
+                # the request was cancelled or the event loop stopped it.
+                self.store.transition(task_id, owner, ("running",), "paused",
+                                      error="Interrupted")
+            task = self.store.get_task(task_id, owner)
         saved_budget = json.loads(task["budget_state"] or "null")
         budget = TaskBudget.from_snapshot(saved_budget) if saved_budget else TaskBudget(
             max_calls=max_model_calls if delegated else int(os.getenv("ORIN_TASK_MODEL_CALLS", "3")),
@@ -240,6 +286,7 @@ class Runtime:
         if not self.store.transition(task_id, owner, ("pending", "paused"), "running"):
             return self.store.get_task(task_id, owner)
         self.store.save_budget_state(task_id, owner, budget.snapshot())
+        _mark_run(task_id, True)
 
         def observe(attempt):
             self.store.record_model_call(
@@ -428,9 +475,23 @@ class Runtime:
                 except Exception as error:
                     logger.error("Task execution paused after failure", extra={"task_id": task_id})
                     self.store.transition(task_id, owner, ("running",), "paused", error=type(error).__name__)
+        except asyncio.CancelledError:
+            # The client disconnected, the process is shutting down, or a
+            # delegation timed out. Release the claim so a later resume can run
+            # instead of leaving the task stuck in "running".
+            try:
+                self.store.transition(task_id, owner, ("running",), "paused",
+                                      error="Cancelled")
+            except Exception:
+                logger.exception("Could not persist cancelled task state",
+                                 extra={"task_id": task_id})
+            logger.warning("Task run cancelled", extra={"task_id": task_id})
+            raise
         except Exception as error:
             logger.error("Task setup failed", extra={"task_id": task_id})
             self.store.transition(task_id, owner, ("running",), "paused", error=type(error).__name__)
+        finally:
+            _mark_run(task_id, False)
         return self.store.get_task(task_id, owner)
 
     def cancel(self, owner: str, task_id: str) -> dict:

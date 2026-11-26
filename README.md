@@ -266,7 +266,8 @@ The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
 resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
 stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and
-`GET /sessions/{id}/messages`. Send
+`GET /sessions/{id}/messages`. `GET /tasks` accepts `limit` (default 200,
+maximum 500) and `offset` for bounded history. Send
 `Authorization: Bearer <ORIN_API_TOKEN>` and `X-Orin-User: <ORIN_API_USER>`
 headers. The API token is required for programmatic task and control routes;
 the paired browser uses its owner-scoped session instead. Bind the server to localhost.
@@ -274,16 +275,19 @@ the paired browser uses its owner-scoped session instead. Bind the server to loc
 The control center now includes Memory and Skills views for owner-scoped
 inspection, corrections, proposals, activation, and rollback. System shows
 session messages and aggregated observed model usage; Connections shows the
-last successful read only when a real execution was recorded. Google OAuth
-credentials stored locally can be disconnected there. Environment-managed
+last successful read only when a real execution was recorded, and lists the
+owner's local tool and content-search grants so they can be revoked. Google
+OAuth credentials stored locally can be disconnected there. Environment-managed
 tokens must be removed from local configuration instead. Token expiry is not
 shown because Orin does not currently retain a verified expiry for these grants.
 
 Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
-`GET /search` and `POST /search/index-local`; `/policy/grants`, `/policy/roots`,
-`/policy/audit`, and `/approvals`; `/actions` for preparing, running, and
-reconciling writes; `/schedules` and `/delegations`; `/tools/files`,
-`/tools/terminal`, `/tools/browser`, and `/mcp/servers`. All use the same API
+`GET /search` and `POST /search/index-local`; `GET/POST /policy/grants`,
+`GET/POST /policy/roots`, `DELETE /policy/grants?capability=...&operation=...`,
+`DELETE /policy/roots?path=...&operation=...`, `GET /policy/audit`, and
+`/approvals`; `/actions` for preparing, running, and reconciling writes;
+`/schedules` and `/delegations`; `/tools/files`, `/tools/terminal`,
+`/tools/browser`, and `/mcp/servers`. All use the same API
 token and owner header. A running schedule needs a separate local worker:
 
 ```bash
@@ -307,9 +311,14 @@ requests.
 
 A task paused by a provider or capability failure can be resumed by ID. Work
 already checkpointed by LangGraph is reused. An interrupted process leaves a
-running task recoverable once its worker process is gone. Cancellation currently
-applies to pending and paused tasks. Duplicate Telegram message IDs and API
-idempotency keys reuse the original task.
+running task recoverable once its worker process is gone. A run that is
+cancelled or interrupted in-process (a disconnected client, a shutdown, or a
+delegation timeout) releases its worker claim and becomes paused instead of
+remaining stuck in `running`; resume it by ID. Cancellation currently applies to
+pending and paused tasks. Duplicate Telegram message IDs and API idempotency
+keys reuse the original task. Local SQLite stores use WAL so the bot, API, CLI,
+and schedule worker can read while another process writes. Include the `-wal`
+sidecar (or checkpoint first) when copying a database manually.
 
 ### Verify
 
@@ -385,6 +394,7 @@ checked against the sidecar's loopback port.
 | `web/app`, `web/components`, `web/lib` | Next.js control center, views, and typed API client |
 | `orchestration/runtime.py` | Durable execution and checkpoint recovery |
 | `orchestration/store.py` | Versioned SQLite schema and task records |
+| `orchestration/db.py` | Shared SQLite connection and WAL setup |
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |
 | `orchestration/integrations.py` | Shared read evidence and Gmail, Drive, Calendar adapters |
 | `orchestration/google_oauth.py` | Desktop OAuth, refresh, OS credential storage, and disconnect |

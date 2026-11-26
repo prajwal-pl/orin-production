@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from orchestration.db import connect as sqlite_connect, enable_wal
+
 
 class PolicyDenied(PermissionError):
     """A capability grant or approval did not authorize this action."""
@@ -31,6 +33,7 @@ class PolicyStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
         os.close(descriptor)
+        enable_wal(self.path)
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS capability_grants (
@@ -58,10 +61,7 @@ class PolicyStore:
             """)
 
     def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA busy_timeout=30000")
-        return db
+        return sqlite_connect(self.path)
 
     @staticmethod
     def _operation(operation: str) -> None:
@@ -76,11 +76,22 @@ class PolicyStore:
             db.execute("INSERT OR IGNORE INTO capability_grants VALUES (?, ?, ?)",
                        (owner, capability, operation))
 
-    def revoke(self, owner: str, capability: str, operation: str) -> None:
+    def revoke(self, owner: str, capability: str, operation: str) -> bool:
         self._operation(operation)
         with self.connect() as db:
-            db.execute("DELETE FROM capability_grants WHERE owner=? AND capability=? AND operation=?",
-                       (owner, capability, operation))
+            changed = db.execute(
+                "DELETE FROM capability_grants WHERE owner=? AND capability=? AND operation=?",
+                (owner, capability, operation)).rowcount
+        if changed:
+            self.audit(owner, capability, operation, "revoked")
+        return bool(changed)
+
+    def list_grants(self, owner: str) -> list[dict]:
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT capability, operation FROM capability_grants
+                WHERE owner=? ORDER BY capability, operation""", (owner,)).fetchall()
+        return [dict(row) for row in rows]
 
     def has_grant(self, owner: str, capability: str, operation: str) -> bool:
         self._operation(operation)
@@ -105,6 +116,32 @@ class PolicyStore:
             rows = db.execute("SELECT path FROM filesystem_roots WHERE owner=? AND operation=?",
                               (owner, operation)).fetchall()
         return [Path(row["path"]) for row in rows]
+
+    def list_roots(self, owner: str) -> list[dict]:
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT path, operation FROM filesystem_roots
+                WHERE owner=? ORDER BY path, operation""", (owner,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def revoke_root(self, owner: str, path: Path, operation: str = "read") -> bool:
+        self._operation(operation)
+        # Grants store the resolved path. Resolve again when possible, but do
+        # not require the directory to still exist so a deleted root can be
+        # removed from policy.
+        candidate = Path(path).expanduser()
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            resolved = Path(os.path.abspath(os.path.normpath(str(candidate))))
+        with self.connect() as db:
+            changed = db.execute(
+                """DELETE FROM filesystem_roots
+                WHERE owner=? AND path=? AND operation=?""",
+                (owner, str(resolved), operation)).rowcount
+        if changed:
+            self.audit(owner, "filesystem", operation, "root_revoked", str(resolved))
+        return bool(changed)
 
     def request_approval(self, owner: str, capability: str, parameters: dict,
                          ttl_seconds: int = 600) -> dict:

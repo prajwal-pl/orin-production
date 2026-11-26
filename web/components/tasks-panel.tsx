@@ -59,6 +59,8 @@ export function TasksPanel({
   const [usage, setUsage] = useState<UsageRecord[]>([]);
   const selected =
     tasks.find((task) => task.id === selectedId) || tasks[0] || null;
+  const interrupted =
+    selected?.error === "Cancelled" || selected?.error === "Interrupted";
   const visible = useMemo(
     () =>
       tasks.filter((task) => {
@@ -76,7 +78,7 @@ export function TasksPanel({
   );
   const streamState = useTaskEvents(
     selected?.id || null,
-    selected?.status === "running",
+    Boolean(selected && ["pending", "running"].includes(selected.status)),
     refresh,
   );
 
@@ -222,8 +224,9 @@ export function TasksPanel({
               </div>
               {selected.error && (
                 <Notice kind="error">
-                  Paused after {selected.error}. You can resume when its
-                  dependency is available.
+                  {interrupted
+                    ? "This run was interrupted before it finished. Resume it to continue from the last checkpoint."
+                    : `Paused after ${selected.error}. You can resume when its dependency is available.`}
                 </Notice>
               )}
               {(selected.status === "pending" ||

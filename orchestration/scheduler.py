@@ -12,6 +12,8 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from orchestration.db import connect as sqlite_connect, enable_wal
+
 
 UTC = timezone.utc
 
@@ -75,6 +77,7 @@ class ScheduledJobStore:
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        enable_wal(self.path)
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS scheduled_jobs (
@@ -101,11 +104,7 @@ class ScheduledJobStore:
             """)
 
     def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA busy_timeout=30000")
-        db.execute("PRAGMA foreign_keys=ON")
-        return db
+        return sqlite_connect(self.path, foreign_keys=True)
 
     def create_once(self, owner: str, session_id: str, request: str, run_at: datetime,
                     *, timezone_name: str = "UTC", misfire_policy: str = "run_once",

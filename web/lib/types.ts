@@ -96,6 +96,16 @@ export interface Capability {
   last_success_at: string | null;
 }
 
+export interface AccessGrant {
+  capability: string;
+  operation: "read" | "write";
+}
+
+export interface FilesystemRoot {
+  path: string;
+  operation: "read" | "write";
+}
+
 export interface Approval {
   id: string;
   capability: string;
@@ -138,6 +148,8 @@ export interface DashboardData {
   sessions: Session[];
   models: ModelHealth[];
   capabilities: Capability[];
+  grants: AccessGrant[];
+  roots: FilesystemRoot[];
   approvals: Approval[];
   actions: Action[];
   schedules: Schedule[];

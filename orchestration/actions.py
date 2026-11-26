@@ -13,6 +13,7 @@ from orchestration.google_writes import (WRITE_SOURCES, execute_google_write,
                                          reconcile_google_write, validate_write)
 from orchestration.policy import PolicyStore
 from orchestration.integrations import MissingCredential
+from orchestration.db import connect as sqlite_connect, enable_wal
 
 
 class ActionStore:
@@ -22,6 +23,7 @@ class ActionStore:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
         os.close(descriptor)
+        enable_wal(self.path)
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS actions (
@@ -37,10 +39,7 @@ class ActionStore:
             """)
 
     def connect(self):
-        db = sqlite3.connect(self.path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA busy_timeout=30000")
-        return db
+        return sqlite_connect(self.path)
 
     @staticmethod
     def _present(row):

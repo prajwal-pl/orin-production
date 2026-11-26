@@ -4,10 +4,11 @@ import asyncio
 import json
 import os
 import secrets
+import threading
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -18,6 +19,7 @@ from orchestration.integrations import MissingCredential, SOURCES, authorize_sou
 from orchestration.local_tools import IsolatedBrowser, ScopedFileSystem, ScopedTerminal
 from orchestration.policy import PolicyDenied
 from orchestration.runtime import Runtime
+from orchestration.store import database_path
 from orchestration.web_assets import attach_web_assets
 from orchestration.web_auth import COOKIE_NAME, SESSION_SECONDS, web_auth
 
@@ -158,8 +160,24 @@ def authorized_owner(request: Request,
     return owner
 
 
+_RUNTIMES: dict[str, Runtime] = {}
+_RUNTIME_LOCK = threading.Lock()
+
+
 def runtime() -> Runtime:
-    return Runtime()
+    """One Runtime per database path for this process.
+
+    Store constructors run migrations and enable WAL. Building a fresh set of
+    stores for every dashboard request created needless connections and lock
+    contention, especially because the UI loads several views in parallel.
+    """
+    key = str(database_path().expanduser().resolve())
+    with _RUNTIME_LOCK:
+        service = _RUNTIMES.get(key)
+        if service is None:
+            service = Runtime(Path(key))
+            _RUNTIMES[key] = service
+        return service
 
 
 @app.get("/auth/bootstrap")
@@ -229,9 +247,12 @@ def task_usage(task_id: str, owner: str = Depends(authorized_owner),
 
 
 @app.get("/tasks")
-def list_tasks(session_id: str | None = None, owner: str = Depends(authorized_owner),
+def list_tasks(session_id: str | None = None,
+               limit: int = Query(default=200, ge=1, le=500),
+               offset: int = Query(default=0, ge=0),
+               owner: str = Depends(authorized_owner),
                service: Runtime = Depends(runtime)):
-    return service.store.list_tasks(owner, session_id)
+    return service.store.list_tasks(owner, session_id, limit=limit, offset=offset)
 
 
 @app.get("/sessions")
@@ -435,7 +456,7 @@ async def stream_events(task_id: str, after: int = 0, owner: str = Depends(autho
                 cursor = event["id"]
                 yield f"id: {cursor}\nevent: {event['name']}\ndata: {json.dumps(event)}\n\n"
             task = service.store.get_task(task_id, owner)
-            if task["status"] in ("completed", "cancelled"):
+            if task["status"] in ("completed", "cancelled", "paused"):
                 break
             await asyncio.sleep(1)
 
@@ -452,6 +473,46 @@ def grant_capability(body: GrantRequest, owner: str = Depends(authorized_owner),
         service.policy.grant(owner, body.capability, body.operation)
         return {"capability": body.capability, "operation": body.operation, "granted": True}
     raise HTTPException(400, "Unknown capability or operation")
+
+
+@app.get("/policy/grants")
+def list_grants(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.policy.list_grants(owner)
+
+
+@app.get("/policy/roots")
+def list_roots(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.policy.list_roots(owner)
+
+
+@app.delete("/policy/grants")
+def revoke_capability(capability: str, operation: str,
+                      owner: str = Depends(authorized_owner),
+                      service: Runtime = Depends(runtime)):
+    try:
+        revoked = service.policy.revoke(owner, capability, operation)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from None
+    except Exception as error:
+        raise phase4_error(error) from None
+    if not revoked:
+        raise HTTPException(404, "Capability grant not found")
+    return {"capability": capability, "operation": operation, "revoked": True}
+
+
+@app.delete("/policy/roots")
+def revoke_filesystem_root(path: str, operation: str = "read",
+                           owner: str = Depends(authorized_owner),
+                           service: Runtime = Depends(runtime)):
+    try:
+        revoked = service.policy.revoke_root(owner, Path(path), operation)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from None
+    except Exception as error:
+        raise phase4_error(error) from None
+    if not revoked:
+        raise HTTPException(404, "Filesystem root grant not found")
+    return {"path": path, "operation": operation, "revoked": True}
 
 
 @app.post("/policy/roots")

@@ -104,8 +104,18 @@ export function ControlCenter() {
       setSelectedTaskId(created.id);
       setView("tasks");
       await refresh();
-      await client.post(`/tasks/${encodeURIComponent(created.id)}/run`);
-      await refresh();
+      // Start the run without blocking the composer. The activity view follows
+      // the pending task's event stream and refreshes when it changes.
+      void client
+        .post(`/tasks/${encodeURIComponent(created.id)}/run`)
+        .catch((failure) =>
+          setTaskError(
+            failure instanceof Error
+              ? failure.message
+              : "Could not start the task",
+          ),
+        )
+        .finally(() => void refresh());
     } catch (failure) {
       setTaskError(
         failure instanceof Error ? failure.message : "Could not start the task",
@@ -186,6 +196,8 @@ export function ControlCenter() {
         <ConnectionsPanel
           client={client}
           capabilities={data.capabilities}
+          grants={data.grants}
+          roots={data.roots}
           refresh={refresh}
         />
       )}

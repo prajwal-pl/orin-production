@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Awaitable, Callable
 from uuid import uuid4
 
+from orchestration.db import connect as sqlite_connect, enable_wal
+
 
 @dataclass(frozen=True)
 class DelegationSpec:
@@ -31,6 +33,7 @@ class DelegationStore:
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        enable_wal(self.path)
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS delegated_tasks (
@@ -48,11 +51,7 @@ class DelegationStore:
             """)
 
     def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA busy_timeout=30000")
-        db.execute("PRAGMA foreign_keys=ON")
-        return db
+        return sqlite_connect(self.path, foreign_keys=True)
 
     @staticmethod
     def _spec(row: sqlite3.Row) -> DelegationSpec:

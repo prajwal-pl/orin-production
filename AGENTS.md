@@ -137,6 +137,7 @@ on verified account linking and channel authorization.
 | `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Loopback UI launcher, browser pairing, static assets |
 | `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
 | `orchestration/store.py` | SQLite schema migrations and records |
+| `orchestration/db.py` | Shared SQLite connection setup and WAL journal mode |
 | `orchestration/github.py` | Notification capability and summary |
 | `orchestration/integrations.py` | Read-only evidence contract and Google adapters |
 | `orchestration/google_oauth.py` | Desktop OAuth, OS credential storage, refresh, disconnect |
@@ -169,6 +170,10 @@ or paused. Pending or paused tasks can be cancelled. Another invocation resumes
 a paused task from its LangGraph checkpoint. A running task whose worker process
 has exited can be recovered. Checkpoints use the task ID as the thread ID.
 Task records and checkpoints are in separate SQLite files to avoid writer locks.
+Local stores enable WAL so channel processes, the API, and the schedule worker
+can read during writes. A running task records the owning process ID; a cancelled
+or interrupted coroutine releases that claim as paused, and a stale same-process
+claim is recoverable.
 
 Telegram is authorized before task submission. GitHub notifications, Gmail inbox
 headers, Drive metadata, Calendar events, optional source reads, meeting prep,
@@ -196,7 +201,8 @@ idempotency key. Unknown outcomes are not sent again automatically.
 records in `orchestration/store.py`. The read graph retains the legacy
 `notifications` key for checkpoint compatibility and adds `observations` and
 `source_status` for other read workflows, plus artifact path and bounded context
-excerpt. Model budgets and health are stored with task and model records. A
+excerpt, and `gmail_response` for planned Gmail header reads. Model budgets and
+health are stored with task and model records. A
 separate `skill_executions` record pins the exact skill version used by each
 read task; memory and skill records are owner-scoped.
 

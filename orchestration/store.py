@@ -2,12 +2,13 @@
 
 import json
 import os
-import sqlite3
 import re
 import time
 import threading
 from pathlib import Path
 from uuid import uuid4
+
+from orchestration.db import connect as sqlite_connect, enable_wal
 
 
 _MIGRATION_LOCK = threading.Lock()
@@ -23,14 +24,12 @@ class TaskStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
         os.close(descriptor)
+        enable_wal(self.path)
         with _MIGRATION_LOCK:
             self.migrate()
 
     def connect(self):
-        connection = sqlite3.connect(self.path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA busy_timeout=30000")
-        return connection
+        return sqlite_connect(self.path)
 
     def migrate(self):
         with self.connect() as db:
@@ -203,12 +202,23 @@ class TaskStore:
             row = db.execute("SELECT * FROM tasks WHERE id=? AND owner=?", (task_id, owner)).fetchone()
             return dict(row) if row else None
 
-    def list_tasks(self, owner: str, session_id: str | None = None) -> list[dict]:
+    def list_tasks(self, owner: str, session_id: str | None = None,
+                   limit: int | None = None, offset: int = 0) -> list[dict]:
+        if limit is not None and limit < 1:
+            raise ValueError("Task list limit must be positive")
+        if offset < 0:
+            raise ValueError("Task list offset cannot be negative")
         with self.connect() as db:
             if session_id:
-                rows = db.execute("SELECT * FROM tasks WHERE owner=? AND session_id=? ORDER BY created_at DESC", (owner, session_id))
+                rows = db.execute(
+                    """SELECT * FROM tasks WHERE owner=? AND session_id=?
+                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?""",
+                    (owner, session_id, -1 if limit is None else limit, offset))
             else:
-                rows = db.execute("SELECT * FROM tasks WHERE owner=? ORDER BY created_at DESC", (owner,))
+                rows = db.execute(
+                    """SELECT * FROM tasks WHERE owner=?
+                    ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?""",
+                    (owner, -1 if limit is None else limit, offset))
             return [dict(row) for row in rows]
 
     def list_sessions(self, owner: str) -> list[dict]:

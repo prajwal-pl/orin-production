@@ -16,7 +16,7 @@ from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_ollama import ChatOllama
 
-from orchestration.model_budget import BudgetExhausted, Complexity, ModelRouter, TaskBudget
+from orchestration.model_budget import Complexity, ModelRouter, TaskBudget
 from orchestration.schema import Classification, NotificationSummary, Verifier
 
 load_dotenv()

@@ -1,23 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { Info, LockKeyhole, Plug2 } from "lucide-react";
+import { FolderLock, Info, LockKeyhole, Plug2 } from "lucide-react";
 import { OrinClient } from "@/lib/api";
-import type { Capability } from "@/lib/types";
+import type { AccessGrant, Capability, FilesystemRoot } from "@/lib/types";
 import { ServiceMark, serviceName } from "./service-mark";
 import { EmptyState, Notice, SectionHeading, StatusBadge } from "./ui";
 import { formatDate } from "@/lib/format";
 
+function accessLabel(operation: string) {
+  return operation === "write" ? "Write access" : "Read access";
+}
+
 export function ConnectionsPanel({
   capabilities,
+  grants,
+  roots,
   client,
   refresh,
 }: {
   capabilities: Capability[];
+  grants: AccessGrant[];
+  roots: FilesystemRoot[];
   client: OrinClient;
   refresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const configured = capabilities.filter((item) => item.configured);
   const remaining = capabilities.filter((item) => !item.configured);
@@ -44,6 +53,54 @@ export function ConnectionsPanel({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function revokeGrant(grant: AccessGrant) {
+    const key = `grant:${grant.capability}:${grant.operation}`;
+    if (
+      !window.confirm(
+        `Revoke ${accessLabel(grant.operation).toLowerCase()} for ${grant.capability}? Tasks needing it will stop until you grant it again.`,
+      )
+    )
+      return;
+    setBusyKey(key);
+    setError("");
+    try {
+      await client.delete(
+        `/policy/grants?capability=${encodeURIComponent(grant.capability)}&operation=${grant.operation}`,
+      );
+      await refresh();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Could not revoke grant",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function revokeRoot(root: FilesystemRoot) {
+    const key = `root:${root.path}:${root.operation}`;
+    if (
+      !window.confirm(
+        `Revoke ${accessLabel(root.operation).toLowerCase()} for ${root.path}? Files under this root become unavailable.`,
+      )
+    )
+      return;
+    setBusyKey(key);
+    setError("");
+    try {
+      await client.delete(
+        `/policy/roots?path=${encodeURIComponent(root.path)}&operation=${root.operation}`,
+      );
+      await refresh();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Could not revoke root",
+      );
+    } finally {
+      setBusyKey(null);
     }
   }
 
@@ -139,6 +196,68 @@ export function ConnectionsPanel({
           <div className="source-list">{rows(remaining)}</div>
         </section>
       )}
+      <section className="surface-card source-section">
+        <SectionHeading
+          eyebrow="LOCAL ACCESS CONTROL"
+          title="Owner grants"
+          description="Filesystem tools, terminal, browser, MCP, and content search are separate from source credentials. Revoke any grant you no longer need."
+        />
+        {grants.length || roots.length ? (
+          <div className="source-list">
+            {grants.map((grant) => {
+              const key = `grant:${grant.capability}:${grant.operation}`;
+              return (
+                <div className="source-row" key={key}>
+                  <div className="source-main">
+                    <strong>{grant.capability}</strong>
+                    <small>
+                      Capability grant stored for this owner. Actions still need
+                      an exact approval.
+                    </small>
+                  </div>
+                  <span className="source-scope">
+                    <LockKeyhole size={14} /> {accessLabel(grant.operation)}
+                  </span>
+                  <button
+                    className="button button-small"
+                    disabled={busyKey === key}
+                    onClick={() => void revokeGrant(grant)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              );
+            })}
+            {roots.map((root) => {
+              const key = `root:${root.path}:${root.operation}`;
+              return (
+                <div className="source-row" key={key}>
+                  <div className="source-main">
+                    <strong>{root.path}</strong>
+                    <small>Approved filesystem root</small>
+                  </div>
+                  <span className="source-scope">
+                    <FolderLock size={14} /> {accessLabel(root.operation)}
+                  </span>
+                  <button
+                    className="button button-small"
+                    disabled={busyKey === key}
+                    onClick={() => void revokeRoot(root)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            icon={LockKeyhole}
+            title="No local grants"
+            description="Grant capabilities through the local API when a workflow needs them."
+          />
+        )}
+      </section>
     </div>
   );
 }

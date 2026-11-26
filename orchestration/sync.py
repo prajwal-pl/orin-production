@@ -14,6 +14,7 @@ from urllib.parse import quote, urlparse
 import httpx
 
 from orchestration.integrations import authorize_source
+from orchestration.db import connect as sqlite_connect, enable_wal
 
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -62,6 +63,7 @@ class SyncStore:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
         os.close(descriptor)
+        enable_wal(self.path)
         with self.connect() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS sync_cursors (
@@ -81,10 +83,7 @@ class SyncStore:
             """)
 
     def connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=30)
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA busy_timeout=30000")
-        return db
+        return sqlite_connect(self.path)
 
     def cursor(self, owner: str, account_id: str, source: str) -> str | None:
         with self.connect() as db:
