@@ -18,7 +18,7 @@ from orchestration.github import fetch_notifications, summarize_notifications, G
 from orchestration.context import ArtifactStore, ContextItem, build_context
 from orchestration.agents import configured_models, inference_options, invoke_result
 from orchestration.model_budget import BudgetExhausted, ModelRecord, ModelRouter, TaskBudget
-from orchestration.graph import builder as prototype_builder
+from orchestration.planner import plan_request
 from orchestration.store import TaskStore
 from orchestration.memory import MemoryStore
 from orchestration.skills import SkillRegistry
@@ -71,8 +71,9 @@ def capability_help(owner: str) -> str:
             "Calendar, or GitHub with the setup commands in the README."
         )
     lines.append(
-        "Unrecognized free-form requests are not executed; a general planner is not "
-        "implemented yet."
+        "I can also try to map a free-form request to one of these workflows. If it is "
+        "ambiguous I will ask one question; if no read workflow fits I will say so "
+        "instead of pretending."
     )
     lines.append(
         "Approvals, schedules, local tools, and MCP are managed from the local control "
@@ -123,6 +124,20 @@ class NotificationState(TypedDict):
     gmail_response: str
 
 
+def _repository_activity_request(lower: str) -> bool:
+    """Recognize clear GitHub-notification wording without stealing other requests."""
+    if not re.search(r"\b(?:github|repos?|repositories)\b", lower):
+        return False
+    if re.search(r"\b(?:create|delete|archive|fork|rename|merge|comment|push|commit)\b", lower):
+        return False
+    if re.search(r"\b(?:issues?|pull requests?|prs?)\b", lower):
+        return False
+    return bool(re.search(
+        r"\b(?:notification|notifications|unread|new|changed|activity|updates?|"
+        r"happening|going on)\b", lower
+    ))
+
+
 def task_kind(request: str) -> str:
     lower = request.lower()
     if _HELP_INTENT.fullmatch(lower.strip()):
@@ -133,7 +148,7 @@ def task_kind(request: str) -> str:
         return "follow_up"
     if "briefing" in lower:
         return "daily_briefing"
-    if "github" in lower and "notification" in lower:
+    if _repository_activity_request(lower):
         return "github_notifications"
     if (re.search(r"\b(?:gmail|e-?mails?|inbox)\b", lower)
             and re.search(r"\b(?:check|show|list|read|find|last|latest|recent|unread|inbox)\b", lower)
@@ -259,7 +274,8 @@ class Runtime:
 
     @staticmethod
     def _required_capabilities(owner: str, kind: str) -> set[str]:
-        if kind == "help":
+        if kind in {"help", "prototype"}:
+            # A prototype task is re-planned and re-checked at run time.
             return set()
         if kind in KIND_SOURCE:
             return {SOURCES[KIND_SOURCE[kind]].capability}
@@ -350,7 +366,36 @@ class Runtime:
             self.store.save_budget_state(task_id, owner, budget.snapshot())
             self.store.save_model_record(asdict(self.router.records[attempt.model]))
 
+        replanned = False
         try:
+            if task["kind"] == "prototype":
+                decision = await plan_request(
+                    owner, task["request"], budget=budget, router=self.router,
+                    observer=observe,
+                    context=self.store.relevant_messages(owner, task["request"]),
+                )
+                self.store.save_budget_state(task_id, owner, budget.snapshot())
+                self.store.record_step(task_id, "planner", decision.action)
+                if decision.action == "execute" and decision.workflow in READ_KINDS:
+                    if delegated:
+                        self._check_delegated_kind(
+                            owner, decision.workflow,
+                            set(delegated["allowed_capabilities"]),
+                        )
+                    if decision.workflow in KIND_SOURCE:
+                        authorize_source(owner, KIND_SOURCE[decision.workflow])
+                    task["kind"] = decision.workflow
+                    self.store.set_task_kind(task_id, owner, decision.workflow)
+                    replanned = True
+                else:
+                    reply = (decision.message or
+                             "I couldn't map that request to a supported read workflow.").strip()[:1500]
+                    self.store.set_task_kind(
+                        task_id, owner,
+                        "clarification" if decision.action == "clarify" else "unsupported",
+                    )
+                    self.store.transition(task_id, owner, ("running",), "completed", reply)
+                    return self.store.get_task(task_id, owner)
             checkpoint_path = self.store.path.with_name(self.store.path.stem + "-checkpoints.db")
             descriptor = os.open(checkpoint_path, os.O_CREAT | os.O_WRONLY, 0o600)
             os.close(descriptor)
@@ -503,16 +548,15 @@ class Runtime:
                                      "context_excerpt": "",
                                      "final_response": "", "gmail_response": ""}
                 else:
-                    graph = prototype_builder.compile(checkpointer=saver)
-                    initial_state = {
-                        "user_id": owner, "message": task["request"], "intent": "",
-                        "service": "other", "arguments": {}, "execution_result": {},
-                        "execution_status": "pending", "feedback": "",
-                        "verification_result": {}, "verification_status": "pending",
-                        "retry_count": 0, "final_response": "",
-                    }
+                    reply = "I couldn't map that request to a supported read workflow."
+                    self.store.transition(task_id, owner, ("running",), "completed", reply)
+                    return self.store.get_task(task_id, owner)
                 try:
-                    checkpoint = await saver.aget_tuple(config)
+                    if replanned:
+                        # The old Phase 0 checkpoint belongs to a different graph.
+                        # Start the resolved read workflow from a clean thread.
+                        await saver.adelete_thread(task_id)
+                    checkpoint = None if replanned else await saver.aget_tuple(config)
                     with inference_options(budget=budget, router=self.router, observer=observe):
                         result = await graph.ainvoke(None if checkpoint else initial_state, config=config)
                     reply = result["final_response"]

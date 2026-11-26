@@ -322,6 +322,13 @@ class TaskStore:
             db.execute("UPDATE tasks SET budget_state=? WHERE id=? AND owner=?",
                        (json.dumps(state), task_id, owner))
 
+    def set_task_kind(self, task_id: str, owner: str, kind: str) -> bool:
+        with self.connect() as db:
+            changed = db.execute(
+                "UPDATE tasks SET kind=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND owner=?",
+                (kind, task_id, owner)).rowcount
+        return bool(changed)
+
     def usage_for_task(self, task_id: str) -> list[dict]:
         with self.connect() as db:
             return [dict(row) for row in db.execute(

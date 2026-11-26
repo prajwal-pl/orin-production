@@ -51,19 +51,28 @@ and LangGraph checkpoints. Telegram, a local CLI, and an authenticated localhost
 API submit to the same runtime. A request containing both “GitHub” and
 “notifications” fetches unread notifications, groups them by repository, and
 prioritizes mentions, assignments, and review requests with source links. This
-summary uses deterministic rules. Other GitHub requests still use the Phase 0
-fallback, which now states the limitation and points to the real read workflows.
-`/help` or “what can you do?” returns the connected sources and supported read
-requests without a model call. A general free-form planner is not implemented
-yet, so unrecognized requests are not executed.
+summary uses deterministic rules. Requests outside those patterns go through a
+capability planner. It may select one connected read workflow, ask one
+clarification question, or refuse; it cannot invent capabilities or expand
+permissions. `/help` or “what can you do?” returns connected sources and the
+implemented read requests without a model call. The Phase 0 mock graph remains
+for its direct demo tests, not normal execution.
+
+The planner is model-assisted and uses the task's inference budget. Its catalog
+contains only workflows whose source is connected and authorized for the owner,
+and its prompt treats the request and session excerpts as untrusted data. A
+refused or ambiguous request completes with a user-facing explanation. Set
+`ORIN_PLANNER=off` to use only deterministic routing and a refusal fallback;
+provider failures pause the task for resume. General tool-using planning remains
+future work.
 
 Phase 2 adds bounded context selection, local artifacts for tool output, a
 per-task inference budget, model health and usage records, and fallback routing.
 The GitHub workflow uses a local deterministic summary for fewer than five
 notifications. Larger inboxes request model highlights from a bounded excerpt
 and append the deterministic source list. When inference is unavailable or the
-budget is exhausted, the workflow returns the local summary. Model calls in the
-prototype graph also use task budgets. Session messages are retrieved
+budget is exhausted, the workflow returns the local summary. Planner and
+read-summary calls use the same task budgets. Session messages are retrieved
 selectively for relevant context.
 
 Phase 3 adds owner-scoped memory in SQLite with FTS5 and a rebuildable local
@@ -171,6 +180,7 @@ ORIN_API_TOKEN=choose-a-long-random-token
 ORIN_API_USER=local
 # ORIN_MODEL=openrouter:nvidia/nemotron-3.5-lightning:free
 # ORIN_FALLBACK_MODEL=ollama:qwen2.5:0.5b
+# ORIN_PLANNER=auto
 # ORIN_DATABASE_PATH=/path/to/orin.db
 # ORIN_CONTEXT_TOKENS=4096
 # ORIN_OUTPUT_RESERVE=512
@@ -398,6 +408,7 @@ checked against the sidecar's loopback port.
 | `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Local UI launcher, browser pairing, static export serving |
 | `web/app`, `web/components`, `web/lib` | Next.js control center, views, and typed API client |
 | `orchestration/runtime.py` | Durable execution and checkpoint recovery |
+| `orchestration/planner.py` | Connected-workflow catalog and capability planning |
 | `orchestration/store.py` | Versioned SQLite schema and task records |
 | `orchestration/db.py` | Shared SQLite connection and WAL setup |
 | `orchestration/github.py` | Read-only GitHub notification fetch and summary |

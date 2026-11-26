@@ -18,3 +18,9 @@ class Verifier(BaseModel):
 
 class NotificationSummary(BaseModel):
     summary: str
+
+
+class PlannerDecision(BaseModel):
+    action: Literal["execute", "clarify", "refuse"]
+    workflow: str | None = None
+    message: str | None = None

@@ -98,7 +98,7 @@ async def test_checkpoint_setup_failure_pauses_task(phase2_env, monkeypatch):
 
     monkeypatch.setattr(runtime.AsyncSqliteSaver, "from_conn_string", fail_checkpoint_setup)
     service = Runtime(phase2_env)
-    task = await service.submit("local", "phase2", "hello")
+    task = await service.submit("local", "phase2", "Summarize my GitHub notifications")
     paused = await service.run("local", task["id"])
     assert paused["status"] == "paused"
     assert paused["error"] == "OSError"

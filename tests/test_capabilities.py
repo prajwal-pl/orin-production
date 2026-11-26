@@ -31,7 +31,7 @@ def test_capability_help_lists_only_connected_sources(monkeypatch):
     assert "GitHub" in reply and "Gmail" in reply
     assert "Drive" not in reply and "Calendar" not in reply
     assert "Summarize my GitHub notifications" in reply
-    assert "not implemented" in reply
+    assert "free-form request" in reply
     assert "mock" not in reply.lower()
 
 
@@ -40,6 +40,15 @@ def test_capability_help_explains_missing_connections(monkeypatch):
     reply = capability_help("local")
     assert "No read source is connected" in reply
     assert "README" in reply
+
+
+def test_repository_activity_has_a_narrow_deterministic_route():
+    assert task_kind("what's new in my repositories?") == "github_notifications"
+    assert task_kind("what changed in my repos?") == "github_notifications"
+    assert task_kind("what's going on in my repos?") == "github_notifications"
+    assert task_kind("create a new repo") == "prototype"
+    assert task_kind("show new pull requests") == "prototype"
+    assert task_kind("new GitHub issues") == "prototype"
 
 
 @pytest.mark.asyncio

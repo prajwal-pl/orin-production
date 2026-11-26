@@ -18,7 +18,7 @@ def telegram_update(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind,expected", [("github-task", "github"), ("gmail-task", "gmail"), ("other", "other")])
-async def test_routing_through_telegram(monkeypatch, telegram_update, kind, expected):
+async def test_phase0_graph_routing(monkeypatch, kind, expected):
     calls = []
 
     async def fake_model(role, message):
@@ -28,13 +28,17 @@ async def test_routing_through_telegram(monkeypatch, telegram_update, kind, expe
         return Verifier(status="pass", feedback="ok", verification_result={"checked": True}, final_response="Mock complete")
 
     monkeypatch.setattr(nodes, "invoke_structured", fake_model)
-    await bot.telegram_bot_message(telegram_update, None)
-    reply = telegram_update.message.reply_text.await_args.args[0]
+    result = await bot.graph.ainvoke({
+        "user_id": "123", "message": "Check GitHub", "intent": "", "service": "other",
+        "arguments": {}, "execution_result": {}, "execution_status": "pending",
+        "verification_result": {}, "verification_status": "pending", "feedback": "",
+        "retry_count": 0, "final_response": "",
+    })
     if expected == "other":
-        assert "read-only workflows" in reply
+        assert "read-only workflows" in result["final_response"]
         assert calls == ["classifier"]
     else:
-        assert reply == "Mock complete"
+        assert result["final_response"] == "Mock complete"
         assert calls == ["classifier", "verifier"]
 
 
@@ -62,25 +66,20 @@ async def test_verification_retries_three_times_and_stops(monkeypatch, telegram_
 
 
 @pytest.mark.asyncio
-async def test_empty_verifier_reply_has_fallback(monkeypatch, telegram_update):
+async def test_empty_verifier_reply_has_fallback(monkeypatch):
     async def fake_model(role, message):
         if role == "classifier":
             return Classification(type="gmail-task", intent="check", arguments={})
         return Verifier(status="pass", feedback="ok", verification_result={}, final_response=None)
 
     monkeypatch.setattr(nodes, "invoke_structured", fake_model)
-    await bot.telegram_bot_message(telegram_update, None)
-    assert "mock task finished" in telegram_update.message.reply_text.await_args.args[0]
-
-
-@pytest.mark.asyncio
-async def test_provider_failure_gets_user_message(monkeypatch, telegram_update):
-    async def fail_model(role, message):
-        raise RuntimeError("secret provider diagnostic")
-
-    monkeypatch.setattr(nodes, "invoke_structured", fail_model)
-    await bot.telegram_bot_message(telegram_update, None)
-    assert "is paused" in telegram_update.message.reply_text.await_args.args[0]
+    result = await bot.graph.ainvoke({
+        "user_id": "123", "message": "Check GitHub", "intent": "", "service": "other",
+        "arguments": {}, "execution_result": {}, "execution_status": "pending",
+        "verification_result": {}, "verification_status": "pending", "feedback": "",
+        "retry_count": 0, "final_response": "",
+    })
+    assert "mock task finished" in result["final_response"]
 
 
 @pytest.mark.asyncio
@@ -133,7 +132,7 @@ async def test_model_fallback_and_malformed_output(monkeypatch):
         await agents.invoke_structured("classifier", "test")
 
 @pytest.mark.asyncio
-async def test_failed_verification_recovers_on_retry(monkeypatch, telegram_update):
+async def test_failed_verification_recovers_on_retry(monkeypatch):
     attempts = 0
 
     async def fake_model(role, message):
@@ -149,9 +148,14 @@ async def test_failed_verification_recovers_on_retry(monkeypatch, telegram_updat
         )
 
     monkeypatch.setattr(nodes, "invoke_structured", fake_model)
-    await bot.telegram_bot_message(telegram_update, None)
+    result = await bot.graph.ainvoke({
+        "user_id": "123", "message": "Check GitHub", "intent": "", "service": "other",
+        "arguments": {}, "execution_result": {}, "execution_status": "pending",
+        "verification_result": {}, "verification_status": "pending", "feedback": "",
+        "retry_count": 0, "final_response": "",
+    })
     assert attempts == 2
-    assert telegram_update.message.reply_text.await_args.args == ("Verified mock task",)
+    assert result["final_response"] == "Verified mock task"
 
 
 def test_application_registers_handlers(monkeypatch):
@@ -171,7 +175,7 @@ async def test_telegram_reply_failure_is_contained(monkeypatch, telegram_update)
     assert telegram_update.message.reply_text.await_count == 2
 
 @pytest.mark.asyncio
-async def test_terminal_verification_failure_does_not_retry(monkeypatch, telegram_update):
+async def test_terminal_verification_failure_does_not_retry(monkeypatch):
     calls = []
 
     async def fake_model(role, message):
@@ -181,6 +185,11 @@ async def test_terminal_verification_failure_does_not_retry(monkeypatch, telegra
         return Verifier(status="fail", feedback="terminal", verification_result={}, final_response=None)
 
     monkeypatch.setattr(nodes, "invoke_structured", fake_model)
-    await bot.telegram_bot_message(telegram_update, None)
+    result = await bot.graph.ainvoke({
+        "user_id": "123", "message": "Check GitHub", "intent": "", "service": "other",
+        "arguments": {}, "execution_result": {}, "execution_status": "pending",
+        "verification_result": {}, "verification_status": "pending", "feedback": "",
+        "retry_count": 0, "final_response": "",
+    })
     assert calls == ["classifier", "verifier"]
-    assert "could not verify" in telegram_update.message.reply_text.await_args.args[0]
+    assert "could not verify" in result["final_response"]

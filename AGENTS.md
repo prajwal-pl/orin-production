@@ -69,11 +69,14 @@ when older unread mail was not checked because `gmail.metadata` forbids Gmail's
 search query parameter. The combined request was live-read on 2026-11-25.
 Google adapters have mocked HTTP tests and were live-authorized and read on
 2026-11-25.
-Other GitHub and Gmail actions still use the Phase 0 mock graph. Unrecognized
-free-form requests return an explicit capability fallback, and `/help` or “what
-can you do?” lists only connected sources and implemented read workflows. A
-general free-form planner is not implemented. Credential-free tests cover channel
-entry points, API authorization, notification fetching, and checkpoint recovery.
+Other GitHub and Gmail actions still use the Phase 0 mock graph only for its
+direct demo tests. Unrecognized free-form requests go through a capability
+planner that can select one connected read workflow, ask one clarification
+question, or refuse. It cannot invent capabilities or expand permissions.
+`/help` or “what can you do?” lists only connected sources and implemented read
+workflows. General tool-using planning remains future work. Credential-free tests
+cover channel entry points, API authorization, notification fetching, and
+checkpoint recovery.
 
 Bounded context selects relevant session messages and tool excerpts while
 preserving the active objective. The GitHub workflow stores normalized tool
@@ -103,8 +106,9 @@ approvals, scoped local tools, stdio MCP trust, durable schedules, and bounded
 child tasks. Narrow Gmail send, Calendar event create, and Drive folder create
 actions stop on ambiguous provider responses and have provider-shaped tests.
 The optional Notion, Todoist, Slack, and Microsoft Graph read adapters and
-Google write scopes have not been live verified. General free-form planning,
-skill synthesis, neural embeddings, and Hub/Node execution remain future work. The GitHub
+Google write scopes have not been live verified. Planner-driven tool use beyond
+the implemented read workflows, skill synthesis, neural embeddings, and Hub/Node
+execution remain future work. The GitHub
 notifications endpoint rejects fine-grained tokens, so its read workflow uses
 a classic token with the `notifications` scope and makes GET requests only.
 
@@ -139,6 +143,7 @@ on verified account linking and channel authorization.
 | `orchestration/api.py` | Authenticated task and session API, SSE stream |
 | `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Loopback UI launcher, browser pairing, static assets |
 | `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
+| `orchestration/planner.py` | Connected-workflow catalog and capability planning |
 | `orchestration/store.py` | SQLite schema migrations and records |
 | `orchestration/db.py` | Shared SQLite connection setup and WAL journal mode |
 | `orchestration/github.py` | Notification capability and summary |
@@ -182,8 +187,11 @@ Telegram is authorized before task submission. GitHub notifications, Gmail inbox
 headers, Drive metadata, Calendar events, optional source reads, meeting prep,
 follow-up queues, and daily briefings use the shared
 read graph. Each source has an owner grant and token setting. Daily briefings
-record partial failures and proceed with available sources. Other requests use
-the Phase 0 classifier, mock executor, and bounded verifier retry graph. Duplicate Telegram
+record partial failures and proceed with available sources. Requests outside the
+deterministic read routes go through the capability planner, which selects only
+from connected read workflows, asks for clarification, or refuses. The Phase 0
+classifier/mock executor and bounded verifier graph remain available for its
+direct demo tests, not normal execution. Duplicate Telegram
 message IDs reuse a task. CLI, API, and browser control center call the same
 `Runtime` methods. Programmatic API clients use a bearer token and configured
 owner ID; the paired browser uses a local session and CSRF token.
@@ -218,7 +226,10 @@ name, observed token usage, and known capabilities. `openrouter:` and `ollama:`
 model identifiers use the installed LangChain integrations. Ollama uses native
 JSON schema output. `ORIN_CONTEXT_TOKENS`, `ORIN_OUTPUT_RESERVE`,
 `ORIN_TASK_MODEL_CALLS`, and `ORIN_TASK_MODEL_TOKENS` set conservative limits.
-Missing provider quota is recorded as unknown. Rate limits apply a cooldown.
+`ORIN_PLANNER=auto` enables the capability planner for requests the deterministic
+router does not recognize; `off` uses a deterministic refusal instead. The
+planner call uses the same router, budget, and usage observer as other model
+calls. Missing provider quota is recorded as unknown. Rate limits apply a cooldown.
 
 ## 6. Running the foundation
 
@@ -424,9 +435,9 @@ Do not start with 15 integrations, six agents, and three frontends.
   uses because GitHub's endpoint rejects fine-grained tokens.
 - Gmail inbox headers, Drive metadata, and Calendar event reads passed live
   account checks on 2026-11-25. Optional source reads and narrow Google writes
-  have only credential-free provider tests. Other GitHub/Gmail requests remain
-  mock executions; unrecognized free-form requests return a capability/help
-  response instead of claiming an action ran.
+  have only credential-free provider tests. GitHub/Gmail requests outside the
+  implemented workflows are not executed; the capability planner can clarify or
+  refuse, and never claims an action ran.
 - Google uses desktop OAuth with PKCE, independent scopes and OS credential
   storage. The External Testing refresh tokens expire after seven days. The
   capability API reports local configuration, not current provider acceptance.
