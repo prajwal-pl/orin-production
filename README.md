@@ -275,10 +275,16 @@ are in its README. The launcher can stop or restart its sidecar; it does not
 change the Telegram, CLI, or browser runtime contract.
 
 The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
-`/start`, `/help`, `/status TASK_ID`, and `/resume TASK_ID`. `/help` or
-“what can you do?” lists the owner's connected read sources and the requests
-that actually execute. Submit an API task with `POST /tasks`, run or
-resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
+`/start`, `/help`, `/status TASK_ID`, `/resume TASK_ID`, `/cancel TASK_ID`,
+`/approvals`, `/approve APPROVAL_ID [confirm]`, `/deny APPROVAL_ID`,
+`/schedules`, and `/unschedule JOB_ID`. `/help` or “what can you do?” lists the
+owner's connected read sources and the requests that actually execute. `/cancel`
+applies to pending and paused tasks. `/approvals` shows exact parameters and
+expiry; `/approve ID` opens the review, and the second `/approve ID confirm`
+performs the single-use approval. `/schedules` lists active jobs and
+`/unschedule ID` cancels one. Executing an approved Google action and using
+local tools or MCP still happen from the control center or API. Submit an API
+task with `POST /tasks`, run or resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
 stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and
 `GET /sessions/{id}/messages`. `GET /tasks` accepts `limit` (default 200,
@@ -312,7 +318,9 @@ uv run python -m orchestration.schedule_worker
 Use `--once` to dispatch due jobs once. Keep this worker running for daily jobs.
 Schedule requests can perform any already authorized read workflow, so review
 the request and connected sources before creating one. All Phase 4 API routes
-are local controls; no Telegram approval interface exists yet.
+remain local controls. Telegram now provides approval review and decision for
+pending or paused tasks, plus schedule listing and cancellation; executing an
+approved action and using local tools or MCP remain in the control center or API.
 
 Memory routes are `POST/GET /memories`, `GET /memories/search?q=...`,
 `GET /memories/export`, and `GET/PUT/DELETE /memories/{id}`. Skill routes are

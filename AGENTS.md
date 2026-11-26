@@ -130,7 +130,10 @@ loopback browser URL, and opens a local webview after one-time pairing. The
 browser control center now manages memory and skill versions and inspects
 session messages, observed usage, and successful source reads. Google OAuth
 disconnect is local-only. Desktop task/approval notifications are generic and
-contain no request contents. Discord and Slack channel adapters remain gated
+contain no request contents. Telegram exposes status, resume, cancel, approval
+review with a two-step decision, denial, and schedule listing/cancellation.
+Approved action execution and local tool/MCP calls remain in the control
+center/API. Discord and Slack channel adapters remain gated
 on verified account linking and channel authorization.
 
 ## 4. Repository map
@@ -443,6 +446,9 @@ Do not start with 15 integrations, six agents, and three frontends.
   capability API reports local configuration, not current provider acceptance.
 - The API supports a single configured owner for its bearer token and must be
   bound to localhost. Cancellation applies to pending and paused tasks.
+- Telegram approval review is exact and two-step; approvals remain single-use
+  and owner-scoped. Approving does not execute an action, and local tool/MCP
+  calls still require the control center or API.
 - The learning loop currently applies to one read-only GitHub priority
   procedure. The local vector cache uses character n-grams and a linear scan;
   neural embeddings and approximate nearest-neighbor search remain future work.

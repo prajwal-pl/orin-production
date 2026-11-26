@@ -5,7 +5,22 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from orchestration.agents import configured_models
-from orchestration.bot import DENIED_REPLY, allowed_user_ids, is_authorized, safe_reply, telegram_bot_message, telegram_help, telegram_task_status, telegram_resume_task
+from orchestration.bot import (
+    DENIED_REPLY,
+    allowed_user_ids,
+    is_authorized,
+    safe_reply,
+    telegram_approvals,
+    telegram_approve,
+    telegram_bot_message,
+    telegram_cancel,
+    telegram_deny,
+    telegram_help,
+    telegram_resume_task,
+    telegram_schedules,
+    telegram_task_status,
+    telegram_unschedule,
+)
 
 load_dotenv()
 
@@ -36,6 +51,12 @@ def build_application(token: str) -> Application:
     application.add_handler(CommandHandler("help", telegram_help))
     application.add_handler(CommandHandler("status", telegram_task_status))
     application.add_handler(CommandHandler("resume", telegram_resume_task))
+    application.add_handler(CommandHandler("cancel", telegram_cancel))
+    application.add_handler(CommandHandler("approvals", telegram_approvals))
+    application.add_handler(CommandHandler("approve", telegram_approve))
+    application.add_handler(CommandHandler("deny", telegram_deny))
+    application.add_handler(CommandHandler("schedules", telegram_schedules))
+    application.add_handler(CommandHandler("unschedule", telegram_unschedule))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_message))
     return application
 
