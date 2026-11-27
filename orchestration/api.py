@@ -779,6 +779,30 @@ def browser_fetch(body: BrowserRequest, owner: str = Depends(authorized_owner),
         raise phase4_error(error) from None
 
 
+@app.get("/mcp/calls")
+def list_mcp_calls(owner: str = Depends(authorized_owner), service: Runtime = Depends(runtime)):
+    return service.mcp_calls.list_pending(owner)
+
+
+@app.post("/mcp/calls/{call_id}/confirm")
+async def confirm_mcp_call(call_id: str, owner: str = Depends(authorized_owner),
+                           service: Runtime = Depends(runtime)):
+    try:
+        return await service.confirm_mcp_call(owner, call_id)
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
+@app.post("/mcp/calls/{call_id}/deny")
+def deny_mcp_call(call_id: str, owner: str = Depends(authorized_owner),
+                  service: Runtime = Depends(runtime)):
+    try:
+        service.deny_mcp_call(owner, call_id)
+        return {"denied": True}
+    except Exception as error:
+        raise phase4_error(error) from None
+
+
 @app.post("/mcp/servers")
 def register_mcp(body: MCPServerRequest, owner: str = Depends(authorized_owner),
                  service: Runtime = Depends(runtime)):

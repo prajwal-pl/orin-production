@@ -106,6 +106,15 @@ export interface FilesystemRoot {
   operation: "read" | "write";
 }
 
+export interface MCPCall {
+  id: string;
+  server_id: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  expires_at: number;
+}
+
 export interface Approval {
   id: string;
   capability: string;
@@ -150,6 +159,7 @@ export interface DashboardData {
   capabilities: Capability[];
   grants: AccessGrant[];
   roots: FilesystemRoot[];
+  mcpCalls: MCPCall[];
   approvals: Approval[];
   actions: Action[];
   schedules: Schedule[];

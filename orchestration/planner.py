@@ -15,6 +15,7 @@ from typing import Callable, Sequence
 from orchestration.agents import AttemptRecord, invoke_result
 from orchestration.context import redact_text
 from orchestration.integrations import connected_sources
+from orchestration.mcp_registry import MCPRegistry
 from orchestration.model_budget import ModelRouter, TaskBudget
 from orchestration.policy import PolicyStore
 from orchestration.schema import PlannerDecision
@@ -43,6 +44,8 @@ class Tool:
     title: str
     description: str
     example: str
+    server_id: str = ""
+    tool_name: str = ""
 
 
 def capability_catalog(owner: str) -> list[Workflow]:
@@ -120,6 +123,28 @@ def tool_catalog(owner: str, policy: PolicyStore | None) -> list[Tool]:
     return tools
 
 
+async def mcp_tool_catalog(owner: str, mcp: MCPRegistry | None) -> list[Tool]:
+    """Expose trusted, granted MCP tools that need no arguments.
+
+    MCP calls always require explicit owner confirmation at execution time; the
+    planner only creates a proposal.
+    """
+    if mcp is None:
+        return []
+    entries = await mcp.list_planner_tools(owner)
+    return [Tool(
+        id=f"mcp:{entry['server_id']}:{entry['tool']}",
+        title=f"MCP {entry['tool']}",
+        description=(
+            (entry["description"] or "Trusted MCP tool with no required arguments.")
+            + " The owner must confirm before this tool runs."
+        ),
+        example=f"Call the {entry['tool']} MCP tool",
+        server_id=entry["server_id"],
+        tool_name=entry["tool"],
+    ) for entry in entries]
+
+
 def _catalog_text(workflows: Sequence[Workflow], tools: Sequence[Tool]) -> str:
     lines = ["Workflows:"]
     lines.extend(
@@ -127,12 +152,21 @@ def _catalog_text(workflows: Sequence[Workflow], tools: Sequence[Tool]) -> str:
         f"Example: \"{workflow.example}\""
         for workflow in workflows
     )
-    if tools:
+    local_tools = [tool for tool in tools if not tool.server_id]
+    mcp_tools = [tool for tool in tools if tool.server_id]
+    if local_tools:
         lines.append("Local read tools (use only with an explicit path or URL):")
         lines.extend(
             f"- {tool.id}: {tool.title}. {tool.description} "
             f"Example: \"{tool.example}\""
-            for tool in tools
+            for tool in local_tools
+        )
+    if mcp_tools:
+        lines.append("MCP tools (proposal only; explicit owner confirmation required):")
+        lines.extend(
+            f"- {tool.id}: {tool.title}. {tool.description} "
+            f"The user must explicitly name this tool; propose it without arguments."
+            for tool in mcp_tools
         )
     return "\n".join(lines)
 
@@ -148,10 +182,14 @@ def _planner_disabled() -> bool:
     return os.getenv("ORIN_PLANNER", "auto").strip().lower() in PLANNER_DISABLED
 
 
-def _tool_arguments(tool_id: str, arguments: object, request: str) -> dict | None:
+def _tool_arguments(tool: Tool, arguments: object, request: str) -> dict | None:
+    if tool.server_id:
+        if arguments not in (None, {}):
+            return None
+        return {}
     if not isinstance(arguments, dict):
         return None
-    if tool_id == "filesystem_read":
+    if tool.id == "filesystem_read":
         if set(arguments) != {"path"}:
             return None
         path = arguments["path"]
@@ -162,7 +200,7 @@ def _tool_arguments(tool_id: str, arguments: object, request: str) -> dict | Non
         if path not in request:
             return None
         return {"path": path}
-    if tool_id == "browser_fetch":
+    if tool.id == "browser_fetch":
         if set(arguments) != {"url"}:
             return None
         url = arguments["url"]
@@ -193,11 +231,12 @@ def _prompt(request: str, workflows: Sequence[Workflow], tools: Sequence[Tool],
         "arguments to an object with only the required key. A local tool is allowed only "
         "if the user explicitly supplied the exact path or URL in the request. Return "
         "clarify when the source, operation, path, URL, or arguments are missing or "
-        "ambiguous. Return refuse for writes, terminal commands, MCP calls, unsupported "
-        "actions, or anything outside the catalog. Never invent a workflow, tool, path, "
-        "URL, permission, or action. Set workflow for a workflow, or tool plus arguments "
-        "for a local tool, never both. Include a short user-facing message for clarify "
-        "or refuse."
+        "ambiguous. Return refuse for writes, terminal commands, unsupported actions, or "
+        "anything outside the catalog. MCP tools in the catalog may be selected only as a "
+        "proposal and always require explicit owner confirmation. Never invent a workflow, "
+        "tool, path, URL, permission, or action. Set workflow for a workflow, or tool plus "
+        "arguments for a local tool, never both. Include a short user-facing message for "
+        "clarify or refuse."
     )
 
 
@@ -210,10 +249,12 @@ async def plan_request(
     observer: Callable[[AttemptRecord], None] | None = None,
     context: Sequence[str] = (),
     policy: PolicyStore | None = None,
+    mcp: MCPRegistry | None = None,
 ) -> PlannerDecision:
     """Return an execute/clarify/refuse decision under the task's model budget."""
     workflows = capability_catalog(owner)
     tools = tool_catalog(owner, policy)
+    tools.extend(await mcp_tool_catalog(owner, mcp))
     if not workflows and not tools:
         return PlannerDecision(action="refuse", message=NO_SOURCE_MESSAGE)
     if _planner_disabled():
@@ -241,13 +282,16 @@ async def plan_request(
             return PlannerDecision(action="execute", workflow=decision.workflow)
         tool_ids = {tool.id for tool in tools}
         if decision.tool in tool_ids:
-            arguments = _tool_arguments(decision.tool, decision.arguments, request)
+            tool = next(item for item in tools if item.id == decision.tool)
+            arguments = _tool_arguments(tool, decision.arguments, request)
             if arguments is None:
-                return PlannerDecision(
-                    action="clarify",
-                    message=("I need the exact path or URL for that local tool, "
-                             "taken from your request."),
+                message = (
+                    "That MCP tool takes no arguments in this planner flow; the owner "
+                    "must confirm it before it runs."
+                    if tool.server_id
+                    else "I need the exact path or URL for that local tool, taken from your request."
                 )
+                return PlannerDecision(action="clarify", message=message)
             return PlannerDecision(action="execute", tool=decision.tool, arguments=arguments)
         return _fallback(workflows, tools, "That request needs a workflow or tool I cannot run yet.")
 

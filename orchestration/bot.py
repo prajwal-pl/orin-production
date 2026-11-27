@@ -118,7 +118,13 @@ async def telegram_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/approve APPROVAL_ID [confirm]\n"
         "/deny APPROVAL_ID\n"
         "/schedules\n"
-        "/unschedule JOB_ID"
+        "/unschedule JOB_ID\n"
+        "/mcp\n"
+        "/mcpconfirm CALL_ID\n"
+        "/mcpdeny CALL_ID\n"
+        "/actions\n"
+        "/runaction ACTION_ID [confirm]\n"
+        "/reconcile ACTION_ID"
     )
     await safe_reply(update.message, capability_help(owner, Runtime().policy) + commands)
 
@@ -327,3 +333,171 @@ async def telegram_unschedule(update: Update, context: ContextTypes.DEFAULT_TYPE
         await safe_reply(update.message, "Schedule not found or already finished.")
         return
     await safe_reply(update.message, f"Schedule {args[0].strip()} cancelled.")
+
+
+def _mcp_text(call: dict) -> str:
+    return "\n".join([
+        f"MCP call {call['id']}",
+        f"Server: {call['server_id']}",
+        f"Tool: {call['tool']}",
+        f"Arguments: {_parameters(call['arguments'])}",
+        f"Expires: {_utc(call['expires_at'])}",
+    ])
+
+
+async def telegram_mcp_calls(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    owner = str(update.effective_user.id)
+    calls = Runtime().mcp_calls.list_pending(owner)
+    if not calls:
+        await safe_reply(update.message, "No MCP calls are awaiting confirmation.")
+        return
+    lines = [f"MCP calls awaiting confirmation: {len(calls)}"]
+    for call in calls[:8]:
+        lines.extend(["", _mcp_text(call)])
+    if len(calls) > 8:
+        lines.append(f"\n… and {len(calls) - 8} more")
+    lines.append("\nConfirm: /mcpconfirm CALL_ID\nDeny: /mcpdeny CALL_ID")
+    await safe_reply(update.message, "\n".join(lines)[:MAX_MESSAGE])
+
+
+async def telegram_mcp_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    args = _args(context)
+    if not args:
+        await safe_reply(update.message, "Use /mcpconfirm CALL_ID")
+        return
+    owner = str(update.effective_user.id)
+    try:
+        result = await Runtime().confirm_mcp_call(owner, args[0].strip())
+    except KeyError:
+        await safe_reply(update.message, "MCP call not found, expired, or already claimed.")
+        return
+    except Exception as error:
+        await safe_reply(update.message, f"MCP call failed ({type(error).__name__}).")
+        return
+    text = f"Untrusted MCP observation ({result['server_id']}/{result['tool']}):\n{result['text']}"
+    await safe_reply(update.message, text[:MAX_MESSAGE])
+
+
+async def telegram_mcp_deny(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    args = _args(context)
+    if not args:
+        await safe_reply(update.message, "Use /mcpdeny CALL_ID")
+        return
+    try:
+        Runtime().deny_mcp_call(str(update.effective_user.id), args[0].strip())
+    except KeyError:
+        await safe_reply(update.message, "MCP call not found or already decided.")
+        return
+    await safe_reply(update.message, f"MCP call {args[0].strip()} denied.")
+
+
+def _action_text(action: dict, approval: dict | None = None) -> str:
+    lines = [
+        f"Action {action['id']}",
+        f"Capability: {action['capability']}",
+        f"Status: {action['status']}",
+        f"Parameters: {_parameters(action['parameters'])}",
+    ]
+    if approval:
+        lines.append(f"Approval: {approval['status']} (expires {_utc(approval['expires_at'])})")
+    return "\n".join(lines)
+
+
+async def telegram_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    owner = str(update.effective_user.id)
+    service = Runtime()
+    actions = service.actions.list(owner)
+    if not actions:
+        await safe_reply(update.message, "No prepared or executed actions.")
+        return
+    lines = [f"Actions: {len(actions)}"]
+    for action in actions[:8]:
+        approval = service.policy.get_approval(owner, action["approval_id"])
+        lines.extend(["", _action_text(action, approval)])
+    if len(actions) > 8:
+        lines.append(f"\n… and {len(actions) - 8} more")
+    lines.append("\nReview/run: /runaction ACTION_ID\nReconcile: /reconcile ACTION_ID")
+    await safe_reply(update.message, "\n".join(lines)[:MAX_MESSAGE])
+
+
+async def telegram_run_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    args = _args(context)
+    if not args:
+        await safe_reply(update.message, "Use /runaction ACTION_ID, then /runaction ACTION_ID confirm")
+        return
+    owner = str(update.effective_user.id)
+    service = Runtime()
+    action = service.actions.get(owner, args[0].strip())
+    if action is None:
+        await safe_reply(update.message, "Action not found.")
+        return
+    if action["status"] != "prepared":
+        await safe_reply(update.message, f"This action is already {action['status']}.")
+        return
+    approval = service.policy.get_approval(owner, action["approval_id"])
+    if len(args) == 1:
+        reply = (_action_text(action, approval) +
+                 f"\n\nSend /runaction {action['id']} confirm to execute exactly this action.")
+        await safe_reply(update.message, reply[:MAX_MESSAGE])
+        return
+    if len(args) != 2 or args[1].lower() != "confirm":
+        await safe_reply(update.message, "Use /runaction ACTION_ID confirm")
+        return
+    try:
+        result = await service.actions.execute(owner, action["id"])
+    except Exception as error:
+        await safe_reply(update.message, f"Action could not run ({type(error).__name__}).")
+        return
+    await safe_reply(update.message, f"Action {action['id']} is {result['status']}.")
+
+
+async def telegram_reconcile_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    if not is_authorized(update):
+        await safe_reply(update.message, DENIED_REPLY)
+        return
+    args = _args(context)
+    if not args:
+        await safe_reply(update.message, "Use /reconcile ACTION_ID")
+        return
+    owner = str(update.effective_user.id)
+    service = Runtime()
+    action = service.actions.get(owner, args[0].strip())
+    if action is None:
+        await safe_reply(update.message, "Action not found.")
+        return
+    if action["status"] not in {"unknown", "executing"}:
+        await safe_reply(update.message, f"No reconciliation is needed; this action is {action['status']}.")
+        return
+    try:
+        result = await service.actions.reconcile(owner, action["id"])
+    except Exception as error:
+        await safe_reply(update.message, f"Reconciliation failed ({type(error).__name__}).")
+        return
+    await safe_reply(update.message, f"Action {action['id']} is {result['status']}.")

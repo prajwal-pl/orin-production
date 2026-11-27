@@ -70,9 +70,16 @@ With explicit grants, the planner can also run two read-only local tools:
 reading one exactly named file under an approved root, and fetching one public
 HTTPS URL with the isolated browser. The user must name the exact path or URL;
 the planner never guesses, and the runtime re-checks that the value appears
-verbatim in the current request. Missing arguments produce a clarification. Raw output
-is stored in a private artifact and only a bounded, clearly untrusted excerpt is
-returned. Terminal, file writes, and MCP tool calls remain outside the planner.
+verbatim in the current request. Missing arguments produce a clarification. Raw
+output is stored in a private artifact and only a bounded, clearly untrusted
+excerpt is returned.
+
+Trusted MCP servers can also contribute planner proposals, but only for tools
+that need no arguments. The planner never invents MCP arguments; it creates a
+pending call that does nothing until the owner confirms it from Telegram, the
+control center, or the API. Tools that require arguments stay behind the explicit
+MCP API/control-center flow. Terminal, file writes, and argument-taking MCP
+tools remain outside the planner.
 
 Phase 2 adds bounded context selection, local artifacts for tool output, a
 per-task inference budget, model health and usage records, and fallback routing.
@@ -285,13 +292,18 @@ change the Telegram, CLI, or browser runtime contract.
 The CLI supports `--session NAME` and `--resume TASK_ID`. Telegram supports
 `/start`, `/help`, `/status TASK_ID`, `/resume TASK_ID`, `/cancel TASK_ID`,
 `/approvals`, `/approve APPROVAL_ID [confirm]`, `/deny APPROVAL_ID`,
-`/schedules`, and `/unschedule JOB_ID`. `/help` or “what can you do?” lists the
-owner's connected read sources and the requests that actually execute. `/cancel`
-applies to pending and paused tasks. `/approvals` shows exact parameters and
-expiry; `/approve ID` opens the review, and the second `/approve ID confirm`
-performs the single-use approval. `/schedules` lists active jobs and
-`/unschedule ID` cancels one. Executing an approved Google action and using
-local tools or MCP still happen from the control center or API. Submit an API
+`/schedules`, `/unschedule JOB_ID`, `/mcp`, `/mcpconfirm CALL_ID`,
+`/mcpdeny CALL_ID`, `/actions`, `/runaction ACTION_ID [confirm]`, and
+`/reconcile ACTION_ID`. `/help` or “what can you do?” lists the owner's
+connected read sources and the requests that actually execute. `/cancel` applies
+to pending and paused tasks. `/approvals` shows exact parameters and expiry;
+`/approve ID` opens the review, and the second `/approve ID confirm` performs
+the single-use approval. `/schedules` lists active jobs and `/unschedule ID`
+cancels one. `/mcp` lists planner-proposed MCP calls; `/mcpconfirm ID` performs
+the explicit confirmation and returns untrusted output. `/actions` lists
+prepared writes; `/runaction ID` opens the exact action review, and the second
+`/runaction ID confirm` executes it after its approval. `/reconcile ID` reads
+provider state for an ambiguous action without resending it. Submit an API
 task with `POST /tasks`, run or resume it with `POST /tasks/{id}/run`, inspect it with `GET /tasks/{id}`, and
 stream events with `GET /tasks/{id}/events?after=EVENT_ID`. The API also exposes
 `GET /tasks`, `GET /tasks/{id}/usage`, `GET /models`, `GET /capabilities`, `GET /sessions`, and
@@ -304,11 +316,12 @@ the paired browser uses its owner-scoped session instead. Bind the server to loc
 The control center now includes Memory and Skills views for owner-scoped
 inspection, corrections, proposals, activation, and rollback. System shows
 session messages and aggregated observed model usage; Connections shows the
-last successful read only when a real execution was recorded, and lists the
-owner's local tool and content-search grants so they can be revoked. Google
-OAuth credentials stored locally can be disconnected there. Environment-managed
-tokens must be removed from local configuration instead. Token expiry is not
-shown because Orin does not currently retain a verified expiry for these grants.
+last successful read only when a real execution was recorded, lists the owner's
+local tool and content-search grants so they can be revoked, and shows pending
+MCP proposals with explicit Confirm/Deny controls. Google OAuth credentials
+stored locally can be disconnected there. Environment-managed tokens must be
+removed from local configuration instead. Token expiry is not shown because Orin
+does not currently retain a verified expiry for these grants.
 
 Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
 `GET /search` and `POST /search/index-local`; `GET/POST /policy/grants`,
@@ -316,8 +329,9 @@ Phase 4 routes include `POST /sync/{gmail|drive|calendar}` with an account ID,
 `DELETE /policy/roots?path=...&operation=...`, `GET /policy/audit`, and
 `/approvals`; `/actions` for preparing, running, and reconciling writes;
 `/schedules` and `/delegations`; `/tools/files`, `/tools/terminal`,
-`/tools/browser`, and `/mcp/servers`. All use the same API
-token and owner header. A running schedule needs a separate local worker:
+`/tools/browser`, `/mcp/servers`, and `/mcp/calls` with confirm/deny controls.
+All use the same API token and owner header. A running schedule needs a separate
+local worker:
 
 ```bash
 uv run python -m orchestration.schedule_worker
@@ -327,8 +341,10 @@ Use `--once` to dispatch due jobs once. Keep this worker running for daily jobs.
 Schedule requests can perform any already authorized read workflow, so review
 the request and connected sources before creating one. All Phase 4 API routes
 remain local controls. Telegram now provides approval review and decision for
-pending or paused tasks, plus schedule listing and cancellation; executing an
-approved action and using local tools or MCP remain in the control center or API.
+pending or paused tasks, schedule listing and cancellation, MCP proposal
+confirmation, and action review/execution/reconciliation. Planner-driven file and
+browser reads also run through Telegram; argument-taking MCP tools remain in the
+control center or API.
 
 Memory routes are `POST/GET /memories`, `GET /memories/search?q=...`,
 `GET /memories/export`, and `GET/PUT/DELETE /memories/{id}`. Skill routes are

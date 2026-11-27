@@ -18,8 +18,9 @@ from orchestration.github import fetch_notifications, summarize_notifications, G
 from orchestration.context import ArtifactStore, ContextItem, build_context
 from orchestration.agents import configured_models, inference_options, invoke_result
 from orchestration.model_budget import BudgetExhausted, ModelRecord, ModelRouter, TaskBudget
-from orchestration.planner import plan_request, tool_catalog
+from orchestration.planner import mcp_tool_catalog, plan_request, tool_catalog
 from orchestration.local_tools import IsolatedBrowser, ScopedFileSystem
+from orchestration.mcp_calls import MCPCallStore
 from orchestration.store import TaskStore
 from orchestration.memory import MemoryStore
 from orchestration.skills import SkillRegistry
@@ -248,6 +249,7 @@ class Runtime:
         base = self.store.path
         self.policy = PolicyStore(base.with_name(base.stem + "-policy.db"))
         self.mcp = MCPRegistry(self.policy)
+        self.mcp_calls = MCPCallStore(base.with_name(base.stem + "-mcp-calls.db"))
         self.actions = ActionStore(base.with_name(base.stem + "-actions.db"), self.policy)
         self.schedules = ScheduledJobStore(base.with_name(base.stem + "-schedules.db"))
         self.delegations = DelegationStore(base)
@@ -306,6 +308,41 @@ class Runtime:
             raise PermissionError("Delegated task was cancelled")
         self._check_delegated_kind(owner, task["kind"], set(item["allowed_capabilities"]))
         return item
+
+    async def _propose_mcp_call(self, owner: str, tool_id: str) -> str:
+        tools = {tool.id: tool for tool in await mcp_tool_catalog(owner, self.mcp)}
+        tool = tools.get(tool_id)
+        if tool is None:
+            return "That MCP tool is not available for this owner."
+        pending = self.mcp_calls.create(owner, tool.server_id, tool.tool_name, {})
+        return (
+            "MCP call requires explicit confirmation.\n"
+            f"Server: {tool.server_id}\nTool: {tool.tool_name}\nArguments: none\n\n"
+            f"Review with /mcp or the control center, then run /mcpconfirm {pending['id']}."
+        )
+
+    async def confirm_mcp_call(self, owner: str, call_id: str) -> dict:
+        pending = self.mcp_calls.claim(owner, call_id)
+        if pending is None:
+            raise KeyError("MCP call not found, expired, or already claimed")
+        try:
+            observation = await self.mcp.call(
+                owner, pending["server_id"], pending["tool"], pending["arguments"])
+        except Exception:
+            self.mcp_calls.finish(owner, call_id, "failed")
+            raise
+        self.mcp_calls.finish(owner, call_id, "completed")
+        return {
+            "status": "completed",
+            "server_id": pending["server_id"],
+            "tool": pending["tool"],
+            "text": observation.text,
+            "untrusted": True,
+        }
+
+    def deny_mcp_call(self, owner: str, call_id: str) -> None:
+        if not self.mcp_calls.deny(owner, call_id):
+            raise KeyError("MCP call not found or already decided")
 
     async def _run_local_tool(self, owner: str, task_id: str, tool_id: str,
                               arguments: dict, request: str) -> str:
@@ -424,6 +461,7 @@ class Runtime:
                     observer=observe,
                     context=self.store.relevant_messages(owner, task["request"]),
                     policy=self.policy,
+                    mcp=self.mcp,
                 )
                 self.store.save_budget_state(task_id, owner, budget.snapshot())
                 self.store.record_step(task_id, "planner", decision.action)
@@ -441,6 +479,12 @@ class Runtime:
                 elif decision.action == "execute" and decision.tool:
                     if delegated:
                         raise PermissionError("Delegated tasks cannot use local planner tools")
+                    if decision.tool.startswith("mcp:"):
+                        reply = await self._propose_mcp_call(owner, decision.tool)
+                        self.store.set_task_kind(task_id, owner, "mcp_confirmation")
+                        self.store.record_step(task_id, "mcp_proposal", "completed")
+                        self.store.transition(task_id, owner, ("running",), "completed", reply)
+                        return self.store.get_task(task_id, owner)
                     reply = await self._run_local_tool(
                         owner, task_id, decision.tool, decision.arguments or {},
                         task["request"])

@@ -10,13 +10,19 @@ from orchestration.bot import (
     allowed_user_ids,
     is_authorized,
     safe_reply,
+    telegram_actions,
     telegram_approvals,
     telegram_approve,
     telegram_bot_message,
     telegram_cancel,
     telegram_deny,
     telegram_help,
+    telegram_mcp_calls,
+    telegram_mcp_confirm,
+    telegram_mcp_deny,
+    telegram_reconcile_action,
     telegram_resume_task,
+    telegram_run_action,
     telegram_schedules,
     telegram_task_status,
     telegram_unschedule,
@@ -57,6 +63,12 @@ def build_application(token: str) -> Application:
     application.add_handler(CommandHandler("deny", telegram_deny))
     application.add_handler(CommandHandler("schedules", telegram_schedules))
     application.add_handler(CommandHandler("unschedule", telegram_unschedule))
+    application.add_handler(CommandHandler("mcp", telegram_mcp_calls))
+    application.add_handler(CommandHandler("mcpconfirm", telegram_mcp_confirm))
+    application.add_handler(CommandHandler("mcpdeny", telegram_mcp_deny))
+    application.add_handler(CommandHandler("actions", telegram_actions))
+    application.add_handler(CommandHandler("runaction", telegram_run_action))
+    application.add_handler(CommandHandler("reconcile", telegram_reconcile_action))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, telegram_bot_message))
     return application
 

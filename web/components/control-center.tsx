@@ -198,6 +198,7 @@ export function ControlCenter() {
           capabilities={data.capabilities}
           grants={data.grants}
           roots={data.roots}
+          mcpCalls={data.mcpCalls}
           refresh={refresh}
         />
       )}

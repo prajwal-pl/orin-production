@@ -163,7 +163,7 @@ def test_application_registers_handlers(monkeypatch):
     monkeypatch.setenv("TELEGRAM_ALLOWED_USER_IDS", "123")
     monkeypatch.setenv("OPENROUTER_API_KEY", "placeholder")
     application = main.build_application(main.validate_configuration())
-    assert len(application.handlers[0]) == 11
+    assert len(application.handlers[0]) == 17
 
 
 @pytest.mark.asyncio

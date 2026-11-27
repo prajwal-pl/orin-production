@@ -44,6 +44,51 @@ class MCPRegistry:
                 PRIMARY KEY(owner, server_id)
             )""")
 
+    def list(self, owner: str) -> list[dict]:
+        with self.policy.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM mcp_servers WHERE owner=? ORDER BY server_id",
+                (owner,)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["allowed_tools"] = json.loads(item["allowed_tools"])
+            result.append(item)
+        return result
+
+    async def list_planner_tools(self, owner: str) -> list[dict]:
+        """Return trusted no-argument tools that the owner has explicitly granted.
+
+        Tools that require arguments stay available through the explicit MCP
+        API/control center, where the owner supplies the arguments. This keeps
+        the planner from inventing tool arguments.
+        """
+        entries: list[dict] = []
+        for record in self.list(owner):
+            if record["trust_status"] != "trusted":
+                continue
+            try:
+                described = await _cached_describe(record["endpoint"])
+            except Exception:
+                continue
+            allowed = set(record["allowed_tools"])
+            for item in described:
+                name = item["name"]
+                if name not in allowed:
+                    continue
+                if not self.policy.has_grant(owner, f"mcp.{record['server_id']}.{name}", "read"):
+                    continue
+                schema = item.get("input_schema") or {}
+                if schema.get("required"):
+                    continue
+                entries.append({
+                    "server_id": record["server_id"],
+                    "tool": name,
+                    "description": item.get("description") or "",
+                    "input_schema": schema,
+                })
+        return entries
+
     def register(self, owner: str, server_id: str, endpoint: str,
                  allowed_tools: list[str]) -> dict:
         if not owner or not server_id or not endpoint or not allowed_tools:
@@ -138,6 +183,37 @@ async def _stdio_list_tools(endpoint: str) -> list[str]:
             async with Client(parameters, read_timeout_seconds=8) as client:
                 result = await client.list_tools()
                 return [item.name for item in result.tools]
+
+
+_DESCRIBE_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_DESCRIBE_TTL_SECONDS = 60
+
+
+def clear_describe_cache() -> None:
+    _DESCRIBE_CACHE.clear()
+
+
+async def _cached_describe(endpoint: str) -> list[dict]:
+    now = time.monotonic()
+    cached = _DESCRIBE_CACHE.get(endpoint)
+    if cached and now - cached[0] < _DESCRIBE_TTL_SECONDS:
+        return cached[1]
+    described = await _stdio_describe_tools(endpoint)
+    _DESCRIBE_CACHE[endpoint] = (now, described)
+    return described
+
+
+async def _stdio_describe_tools(endpoint: str) -> list[dict]:
+    with tempfile.TemporaryDirectory(prefix="orin-mcp-") as home:
+        parameters = _server_parameters(endpoint, home)
+        async with asyncio.timeout(10):
+            async with Client(parameters, read_timeout_seconds=8) as client:
+                result = await client.list_tools()
+                return [{
+                    "name": item.name,
+                    "description": item.description or "",
+                    "input_schema": dict(item.input_schema or {}),
+                } for item in result.tools]
 
 
 async def _stdio_call_tool(endpoint: str, tool: str, arguments: dict) -> str:

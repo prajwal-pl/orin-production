@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { FolderLock, Info, LockKeyhole, Plug2 } from "lucide-react";
 import { OrinClient } from "@/lib/api";
-import type { AccessGrant, Capability, FilesystemRoot } from "@/lib/types";
+import type {
+  AccessGrant,
+  Capability,
+  FilesystemRoot,
+  MCPCall,
+} from "@/lib/types";
 import { ServiceMark, serviceName } from "./service-mark";
 import { EmptyState, Notice, SectionHeading, StatusBadge } from "./ui";
 import { formatDate } from "@/lib/format";
@@ -16,18 +21,21 @@ export function ConnectionsPanel({
   capabilities,
   grants,
   roots,
+  mcpCalls,
   client,
   refresh,
 }: {
   capabilities: Capability[];
   grants: AccessGrant[];
   roots: FilesystemRoot[];
+  mcpCalls: MCPCall[];
   client: OrinClient;
   refresh: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [mcpResult, setMCPResult] = useState("");
   const configured = capabilities.filter((item) => item.configured);
   const remaining = capabilities.filter((item) => !item.configured);
 
@@ -104,6 +112,56 @@ export function ConnectionsPanel({
     }
   }
 
+  async function confirmMCPCall(call: MCPCall) {
+    const key = `mcp:${call.id}`;
+    if (
+      !window.confirm(
+        `Run MCP tool ${call.tool} on ${call.server_id}? This is an explicit confirmation.`,
+      )
+    )
+      return;
+    setBusyKey(key);
+    setError("");
+    setMCPResult("");
+    try {
+      const result = await client.post<{
+        text: string;
+        server_id: string;
+        tool: string;
+      }>(`/mcp/calls/${encodeURIComponent(call.id)}/confirm`);
+      setMCPResult(
+        `Untrusted MCP observation (${result.server_id}/${result.tool}):\n${result.text}`.slice(
+          0,
+          3000,
+        ),
+      );
+      await refresh();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Could not run MCP call",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function denyMCPCall(call: MCPCall) {
+    const key = `mcp:${call.id}`;
+    setBusyKey(key);
+    setError("");
+    setMCPResult("");
+    try {
+      await client.post(`/mcp/calls/${encodeURIComponent(call.id)}/deny`);
+      await refresh();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Could not deny MCP call",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   const rows = (sources: Capability[]) =>
     sources.map((source) => (
       <div className="source-row" key={source.key}>
@@ -166,6 +224,11 @@ export function ConnectionsPanel({
         </span>
       </div>
       {error && <Notice kind="error">{error}</Notice>}
+      {mcpResult && (
+        <Notice kind="info">
+          <span className="mcp-result">{mcpResult}</span>
+        </Notice>
+      )}
       <p className="setup-hint">
         Need to add a source? Connection setup is currently done from the Orin
         project terminal. The README lists each OAuth and token command.
@@ -255,6 +318,57 @@ export function ConnectionsPanel({
             icon={LockKeyhole}
             title="No local grants"
             description="Grant capabilities through the local API when a workflow needs them."
+          />
+        )}
+      </section>
+      <section className="surface-card source-section">
+        <SectionHeading
+          eyebrow="MCP CONFIRMATION"
+          title="Pending MCP calls"
+          description="The planner can propose a trusted MCP tool with no required arguments. Nothing runs until you confirm the exact call."
+        />
+        {mcpCalls.length ? (
+          <div className="source-list">
+            {mcpCalls.map((call) => {
+              const key = `mcp:${call.id}`;
+              const args = Object.keys(call.arguments).length
+                ? JSON.stringify(call.arguments)
+                : "none";
+              return (
+                <div className="source-row" key={key}>
+                  <div className="source-main">
+                    <strong>
+                      {call.server_id} / {call.tool}
+                    </strong>
+                    <small>Arguments: {args}</small>
+                    <small>Expires {formatDate(call.expires_at)}</small>
+                  </div>
+                  <span className="source-scope">
+                    <LockKeyhole size={14} /> Confirmation
+                  </span>
+                  <button
+                    className="button button-small"
+                    disabled={busyKey === key}
+                    onClick={() => void confirmMCPCall(call)}
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    className="button button-small"
+                    disabled={busyKey === key}
+                    onClick={() => void denyMCPCall(call)}
+                  >
+                    Deny
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            icon={LockKeyhole}
+            title="No MCP calls"
+            description="Planner proposals that need confirmation will appear here."
           />
         )}
       </section>

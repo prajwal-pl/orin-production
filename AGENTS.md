@@ -72,13 +72,15 @@ Google adapters have mocked HTTP tests and were live-authorized and read on
 Other GitHub and Gmail actions still use the Phase 0 mock graph only for its
 direct demo tests. Unrecognized free-form requests go through a capability
 planner that can select one connected read workflow, one read-only local tool
-(explicit file path or public HTTPS URL), ask one clarification question, or
-refuse. It cannot invent capabilities or expand permissions. Local tool output
-is stored privately and returned only as a bounded untrusted excerpt.
+(explicit file path or public HTTPS URL), propose a trusted no-argument MCP tool,
+ask one clarification question, or refuse. It cannot invent capabilities or
+expand permissions. Local tool output is stored privately and returned only as a
+bounded untrusted excerpt. MCP proposals never execute directly; they require an
+explicit owner confirmation from Telegram, the control center, or the API.
 `/help` or “what can you do?” lists only connected sources and implemented read
-workflows and tools. General tool-using planning, MCP planning, and terminal or
-write execution remain future work. Credential-free tests cover channel entry
-points, API authorization, notification fetching, and checkpoint recovery.
+workflows and tools. General argument-taking MCP planning and terminal or write
+execution remain future work. Credential-free tests cover channel entry points,
+API authorization, notification fetching, and checkpoint recovery.
 
 Bounded context selects relevant session messages and tool excerpts while
 preserving the active objective. The GitHub workflow stores normalized tool
@@ -133,9 +135,10 @@ browser control center now manages memory and skill versions and inspects
 session messages, observed usage, and successful source reads. Google OAuth
 disconnect is local-only. Desktop task/approval notifications are generic and
 contain no request contents. Telegram exposes status, resume, cancel, approval
-review with a two-step decision, denial, and schedule listing/cancellation.
-Approved action execution and local tool/MCP calls remain in the control
-center/API. Discord and Slack channel adapters remain gated
+review with a two-step decision, denial, schedule listing/cancellation, MCP
+proposal confirmation, and action review/execution/reconciliation. Planner
+file/browser reads run through the same runtime. Argument-taking MCP tools remain
+in the control center/API. Discord and Slack channel adapters remain gated
 on verified account linking and channel authorization.
 
 ## 4. Repository map
@@ -157,6 +160,7 @@ on verified account linking and channel authorization.
 | `orchestration/sync.py`, `orchestration/search.py` | Google metadata cursors and cited owner-scoped search |
 | `orchestration/policy.py`, `orchestration/actions.py` | Grants, approvals, audit, and durable external actions |
 | `orchestration/local_tools.py`, `orchestration/mcp_registry.py` | Scoped file/container/browser tools and trusted stdio MCP |
+| `orchestration/mcp_calls.py` | Pending MCP proposals and explicit confirmation |
 | `orchestration/scheduler.py`, `orchestration/delegation.py` | Local schedules and bounded child tasks |
 | `orchestration/productivity.py`, `orchestration/external_reads.py` | Read procedures and optional source adapters |
 | `orchestration/graph.py` | Phase 0 mock graph topology |
@@ -449,13 +453,17 @@ Do not start with 15 integrations, six agents, and three frontends.
 - The API supports a single configured owner for its bearer token and must be
   bound to localhost. Cancellation applies to pending and paused tasks.
 - Telegram approval review is exact and two-step; approvals remain single-use
-  and owner-scoped. Approving does not execute an action, and local tool/MCP
-  calls still require the control center or API.
+  and owner-scoped. Approving does not execute an action; `/runaction ID confirm`
+  or the control center/API explicitly runs an approved prepared action.
 - Planner-driven local tools are limited to a single filesystem read under an
   approved root and a single public-HTTPS browser fetch. The planner must copy
   an explicit path or URL from the request, and the runtime re-checks that the
   value appears verbatim in the current request. The browser is profile-isolated
-  but not network-sandboxed; terminal, writes, and MCP remain outside the planner.
+  but not network-sandboxed; terminal, writes, and argument-taking MCP tools
+  remain outside the planner.
+- Planner MCP proposals are limited to trusted, granted tools with no required
+  arguments. They create a pending call and never execute until the owner
+  confirms it. Trusted MCP executables still run with host-user privileges.
 - The learning loop currently applies to one read-only GitHub priority
   procedure. The local vector cache uses character n-grams and a linear scan;
   neural embeddings and approximate nearest-neighbor search remain future work.

@@ -11,6 +11,10 @@
 .source-row > .button-small {
   margin-left: auto;
 }
+.mcp-result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .management-form .field {
   min-width: 0;
 }
