@@ -66,6 +66,14 @@ refused or ambiguous request completes with a user-facing explanation. Set
 provider failures pause the task for resume. General tool-using planning remains
 future work.
 
+With explicit grants, the planner can also run two read-only local tools:
+reading one exactly named file under an approved root, and fetching one public
+HTTPS URL with the isolated browser. The user must name the exact path or URL;
+the planner never guesses, and the runtime re-checks that the value appears
+verbatim in the current request. Missing arguments produce a clarification. Raw output
+is stored in a private artifact and only a bounded, clearly untrusted excerpt is
+returned. Terminal, file writes, and MCP tool calls remain outside the planner.
+
 Phase 2 adds bounded context selection, local artifacts for tool output, a
 per-task inference budget, model health and usage records, and fallback routing.
 The GitHub workflow uses a local deterministic summary for fewer than five

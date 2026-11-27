@@ -18,7 +18,8 @@ from orchestration.github import fetch_notifications, summarize_notifications, G
 from orchestration.context import ArtifactStore, ContextItem, build_context
 from orchestration.agents import configured_models, inference_options, invoke_result
 from orchestration.model_budget import BudgetExhausted, ModelRecord, ModelRouter, TaskBudget
-from orchestration.planner import plan_request
+from orchestration.planner import plan_request, tool_catalog
+from orchestration.local_tools import IsolatedBrowser, ScopedFileSystem
 from orchestration.store import TaskStore
 from orchestration.memory import MemoryStore
 from orchestration.skills import SkillRegistry
@@ -51,7 +52,7 @@ _HELP_SOURCES = {
 }
 
 
-def capability_help(owner: str) -> str:
+def capability_help(owner: str, policy=None) -> str:
     """Explain only what this owner can actually run, without a model call."""
     connected = [key for key in _HELP_SOURCES if key in set(connected_sources(owner))]
     lines = ["I run read-only workflows on this local runtime."]
@@ -70,14 +71,18 @@ def capability_help(owner: str) -> str:
             "No read source is connected for this account yet. Connect Gmail, Drive, "
             "Calendar, or GitHub with the setup commands in the README."
         )
+    tools = tool_catalog(owner, policy) if policy is not None else []
+    if tools:
+        lines.append("Local read tools (exact path or URL required):")
+        lines.extend(f"- {tool.example}" for tool in tools)
     lines.append(
         "I can also try to map a free-form request to one of these workflows. If it is "
         "ambiguous I will ask one question; if no read workflow fits I will say so "
         "instead of pretending."
     )
     lines.append(
-        "Approvals, schedules, local tools, and MCP are managed from the local control "
-        "center or API."
+        "Approvals and schedules can be reviewed from Telegram. Executing approved "
+        "actions and using MCP still happen in the control center or API."
     )
     return "\n".join(lines)
 
@@ -302,6 +307,51 @@ class Runtime:
         self._check_delegated_kind(owner, task["kind"], set(item["allowed_capabilities"]))
         return item
 
+    async def _run_local_tool(self, owner: str, task_id: str, tool_id: str,
+                              arguments: dict, request: str) -> str:
+        allowed = {tool.id for tool in tool_catalog(owner, self.policy)}
+        if tool_id not in allowed:
+            return "That local read tool is not available for this owner."
+        if not isinstance(arguments, dict):
+            return "Invalid local tool arguments."
+        if tool_id == "filesystem_read" and arguments.get("path", "") not in request:
+            return "I need the exact file path from your current request."
+        if tool_id == "browser_fetch" and arguments.get("url", "") not in request:
+            return "I need the exact URL from your current request."
+        try:
+            if tool_id == "filesystem_read":
+                path = Path(arguments.get("path", ""))
+                content = ScopedFileSystem(self.policy, owner).read(path)
+                text = content.decode("utf-8", errors="replace")
+                observation = ArtifactStore(self.store.path.parent / "artifacts").save(
+                    task_id, tool_id, text)
+                self.store.record_artifact(task_id, str(observation.artifact_path),
+                                           observation.byte_count)
+                self.store.record_execution(task_id, "filesystem.read", "completed")
+                output = text[:4000]
+                if len(text) > len(output):
+                    output += "\n… output truncated; raw content is in the private artifact."
+                return f"Read {path} (untrusted data):\n{output}"
+            if tool_id == "browser_fetch":
+                url = arguments.get("url", "")
+                result = await asyncio.to_thread(
+                    IsolatedBrowser(self.policy, owner).fetch, url)
+                observation = ArtifactStore(self.store.path.parent / "artifacts").save(
+                    task_id, tool_id, result.output)
+                self.store.record_artifact(task_id, str(observation.artifact_path),
+                                           observation.byte_count)
+                self.store.record_execution(task_id, "browser.fetch", result.status)
+                output = result.output[:4000]
+                if len(result.output) > len(output):
+                    output += "\n… output truncated; raw content is in the private artifact."
+                return f"Fetched {url} with status {result.status} (untrusted data):\n{output}"
+        except Exception as error:
+            logger.warning("Local tool failed", extra={"task_id": task_id, "tool": tool_id})
+            self.store.record_execution(task_id, tool_id.replace("_", "."), "failed")
+            return (f"Could not run {tool_id} ({type(error).__name__}). Check the approved "
+                    "roots/grant or local availability.")
+        return "That local read tool is not implemented."
+
     async def run(self, owner: str, task_id: str,
                   max_model_calls: int | None = None, max_model_tokens: int | None = None) -> dict:
         task = self.store.get_task(task_id, owner)
@@ -340,7 +390,7 @@ class Runtime:
         if task["kind"] == "help":
             self.store.record_step(task_id, "capability_help", "completed")
             self.store.transition(task_id, owner, ("pending", "paused"), "completed",
-                                  capability_help(owner))
+                                  capability_help(owner, self.policy))
             return self.store.get_task(task_id, owner)
         saved_budget = json.loads(task["budget_state"] or "null")
         budget = TaskBudget.from_snapshot(saved_budget) if saved_budget else TaskBudget(
@@ -373,6 +423,7 @@ class Runtime:
                     owner, task["request"], budget=budget, router=self.router,
                     observer=observe,
                     context=self.store.relevant_messages(owner, task["request"]),
+                    policy=self.policy,
                 )
                 self.store.save_budget_state(task_id, owner, budget.snapshot())
                 self.store.record_step(task_id, "planner", decision.action)
@@ -387,6 +438,16 @@ class Runtime:
                     task["kind"] = decision.workflow
                     self.store.set_task_kind(task_id, owner, decision.workflow)
                     replanned = True
+                elif decision.action == "execute" and decision.tool:
+                    if delegated:
+                        raise PermissionError("Delegated tasks cannot use local planner tools")
+                    reply = await self._run_local_tool(
+                        owner, task_id, decision.tool, decision.arguments or {},
+                        task["request"])
+                    self.store.set_task_kind(task_id, owner, decision.tool)
+                    self.store.record_step(task_id, "tool", "completed")
+                    self.store.transition(task_id, owner, ("running",), "completed", reply)
+                    return self.store.get_task(task_id, owner)
                 else:
                     reply = (decision.message or
                              "I couldn't map that request to a supported read workflow.").strip()[:1500]

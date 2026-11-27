@@ -120,7 +120,7 @@ async def telegram_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/schedules\n"
         "/unschedule JOB_ID"
     )
-    await safe_reply(update.message, capability_help(owner) + commands)
+    await safe_reply(update.message, capability_help(owner, Runtime().policy) + commands)
 
 
 async def telegram_task_status(update: Update, context: ContextTypes.DEFAULT_TYPE):

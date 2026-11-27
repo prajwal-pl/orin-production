@@ -23,4 +23,6 @@ class NotificationSummary(BaseModel):
 class PlannerDecision(BaseModel):
     action: Literal["execute", "clarify", "refuse"]
     workflow: str | None = None
+    tool: str | None = None
+    arguments: dict | None = None
     message: str | None = None

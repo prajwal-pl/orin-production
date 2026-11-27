@@ -81,7 +81,8 @@ The phase numbering follows the [README roadmap](README.md#roadmap) and [project
 - [x] Add a shared capability-help response (Telegram `/help` and “what can you do?”) that lists only connected read sources, and replace the stale Phase 0 fallback text with an explicit unsupported response.
 - [x] Add a capability-aware planner that maps free-form requests to implemented read workflows, asks one clarification question when needed, and refuses unsupported actions explicitly. It selects only from connected workflows and runs under the task inference budget.
 - [x] Add Telegram controls for task cancellation, exact approval review and two-step decision, denial, schedule listing, and schedule cancellation.
-- [ ] Add planner-driven use of Phase 4 local tools/MCP, plus Telegram execution/reconciliation controls for approved actions.
+- [x] Add planner-driven read-only filesystem and browser tools with explicit path/URL arguments, approved-root/grant checks, private artifacts, and bounded untrusted output.
+- [ ] Add planner-driven MCP read tools with schema-aware arguments and trust controls, plus Telegram execution/reconciliation controls for approved actions.
 
 **Core done when** scheduled and delegated workflows obey permissions and budgets, and execution history records each action and approval. This is covered by credential-free tests and a fictional Aurora launch API scenario. Live optional-account and Google-write verification remain open above.
 
