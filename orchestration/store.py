@@ -34,7 +34,7 @@ class TaskStore:
     def migrate(self):
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 7:
+            if version > 8:
                 raise RuntimeError("Database schema is newer than this Orin version")
             if version == 0:
                 db.executescript("""
@@ -175,6 +175,11 @@ class TaskStore:
                     );
                     PRAGMA user_version=7;
                 """)
+            if version < 8:
+                columns = {row[1] for row in db.execute("PRAGMA table_info(tasks)")}
+                if "error_detail" not in columns:
+                    db.execute("ALTER TABLE tasks ADD COLUMN error_detail TEXT")
+                db.execute("PRAGMA user_version=8")
 
     def create_task(self, owner: str, session_id: str, request: str, kind: str,
                     idempotency_key: str | None = None) -> dict:
@@ -277,13 +282,15 @@ class TaskStore:
         return [content for _, _, content in ranked[:limit]]
 
     def transition(self, task_id: str, owner: str, from_status: tuple[str, ...], to_status: str,
-                   result: str | None = None, error: str | None = None) -> bool:
+                   result: str | None = None, error: str | None = None,
+                   error_detail: str | None = None) -> bool:
         placeholders = ",".join("?" for _ in from_status)
         with self.connect() as db:
             worker_pid = os.getpid() if to_status == "running" else None
-            cursor = db.execute(f"""UPDATE tasks SET status=?, result=COALESCE(?, result), error=?, worker_pid=?,
+            cursor = db.execute(f"""UPDATE tasks SET status=?, result=COALESCE(?, result), error=?,
+                error_detail=?, worker_pid=?,
                 updated_at=CURRENT_TIMESTAMP WHERE id=? AND owner=? AND status IN ({placeholders})""",
-                (to_status, result, error, worker_pid, task_id, owner, *from_status))
+                (to_status, result, error, error_detail, worker_pid, task_id, owner, *from_status))
             if cursor.rowcount:
                 db.execute("INSERT INTO events(task_id, name) VALUES (?, ?)", (task_id, to_status))
                 if to_status == "completed" and result:

@@ -11,15 +11,15 @@ from time import monotonic
 from typing import Callable, Protocol
 
 import httpx
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.agents.structured_output import ToolStrategy
 from langchain_ollama import ChatOllama
 
+from orchestration.config import load_environment
 from orchestration.model_budget import Complexity, ModelRouter, TaskBudget
 from orchestration.schema import Classification, NotificationSummary, PlannerDecision, Verifier
 
-load_dotenv()
+load_environment()
 
 DEFAULT_MODEL = "openrouter:nvidia/nemotron-3.5-lightning:free"
 PROMPTS = {

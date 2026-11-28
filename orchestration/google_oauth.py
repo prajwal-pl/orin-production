@@ -14,7 +14,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 import keyring
-from dotenv import load_dotenv
+
+from orchestration.config import load_environment
 
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -188,7 +189,7 @@ async def connect(source: str, owner: str, open_browser: bool = False) -> None:
 
 
 def main() -> None:
-    load_dotenv()
+    load_environment()
     parser = argparse.ArgumentParser(description="Connect a Google read capability to Orin")
     parser.add_argument("source", choices=GOOGLE_SCOPES)
     parser.add_argument("--owner", default=os.getenv("ORIN_CLI_USER", "local"))

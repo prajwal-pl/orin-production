@@ -130,7 +130,13 @@ defaults to the OS setting. The SVG favicon is part of the Next.js static
 export and is served from the loopback FastAPI process.
 Phase 5B adds a Tauri launcher under `desktop/`. It starts a PyInstaller-frozen
 copy of the same Python service and exported UI, exposes stop/restart and the
-loopback browser URL, and opens a local webview after one-time pairing. The
+loopback browser URL, and opens a local webview after one-time pairing. A
+desktop-environment launch has no repository working directory, so all entry
+points resolve credentials through `orchestration/config.py`:
+`ORIN_ENV_FILE`, the current directory `.env`, `~/.orion/config/.env`, then the
+source checkout `.env`, without overriding process environment values. Failed
+tasks record a redacted `error_detail` beside the exception type so the
+workbench can explain a pause instead of showing only `RuntimeError`. The
 browser control center now manages memory and skill versions and inspects
 session messages, observed usage, and successful source reads. Google OAuth
 disconnect is local-only. Desktop task/approval notifications are generic and
@@ -151,6 +157,7 @@ on verified account linking and channel authorization.
 | `orchestration/api.py` | Authenticated task and session API, SSE stream |
 | `orchestration/control_center.py`, `orchestration/web_auth.py`, `orchestration/web_assets.py` | Loopback UI launcher, browser pairing, static assets |
 | `orchestration/runtime.py` | Shared execution, checkpoints, recovery |
+| `orchestration/config.py` | Launch-directory-independent local environment loading |
 | `orchestration/planner.py` | Connected-workflow catalog and capability planning |
 | `orchestration/store.py` | SQLite schema migrations and records |
 | `orchestration/db.py` | Shared SQLite connection setup and WAL journal mode |

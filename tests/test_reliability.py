@@ -135,6 +135,23 @@ async def test_delegation_timeout_pauses_child_and_allows_resume(local_db, monke
     assert service.store.get_task(task["id"], "local")["status"] == "completed"
 
 
+@pytest.mark.asyncio
+async def test_failure_detail_is_stored_and_redacted(local_db, monkeypatch):
+    async def failing_fetch():
+        raise RuntimeError("request failed with ghp_" + "a" * 30)
+
+    monkeypatch.setattr(runtime, "fetch_notifications", failing_fetch)
+    service = Runtime(local_db)
+    task = await service.submit("local", "failure", "Summarize my GitHub notifications")
+
+    paused = await service.run("local", task["id"])
+
+    assert paused["status"] == "paused"
+    assert paused["error"] == "RuntimeError"
+    assert "request failed" in paused["error_detail"]
+    assert "ghp_" not in paused["error_detail"]
+
+
 def test_wal_enabled_for_shared_local_stores(tmp_path):
     from orchestration.actions import ActionStore
     from orchestration.policy import PolicyStore

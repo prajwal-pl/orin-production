@@ -4,15 +4,15 @@ import argparse
 import os
 
 import uvicorn
-from dotenv import load_dotenv
 
 from orchestration.api import app
+from orchestration.config import load_environment
 from orchestration.web_assets import WEB_OUTPUT
 from orchestration.web_auth import web_auth
 
 
 def main() -> None:
-    load_dotenv()
+    load_environment()
     parser = argparse.ArgumentParser(description="Start the local Orin control center")
     parser.add_argument("--port", type=int, default=int(os.getenv("ORIN_WEB_PORT", "8000")))
     args = parser.parse_args()

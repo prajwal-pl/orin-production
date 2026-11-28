@@ -1,6 +1,5 @@
 import os
 
-from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -27,8 +26,9 @@ from orchestration.bot import (
     telegram_task_status,
     telegram_unschedule,
 )
+from orchestration.config import load_environment
 
-load_dotenv()
+load_environment()
 
 
 def validate_configuration() -> str:

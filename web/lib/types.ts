@@ -9,6 +9,7 @@ export interface Task {
   status: TaskStatus;
   result: string | null;
   error: string | null;
+  error_detail?: string | null;
   created_at: string;
   updated_at: string;
 }

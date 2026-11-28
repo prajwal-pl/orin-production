@@ -66,7 +66,7 @@ def test_phase3_migration_from_version_six(phase3_env):
             db.execute(f"DROP TABLE {table}")
         db.execute("PRAGMA user_version=6")
     store = TaskStore(phase3_env)
-    assert store.connect().execute("PRAGMA user_version").fetchone()[0] == 7
+    assert store.connect().execute("PRAGMA user_version").fetchone()[0] == 8
     assert MemoryStore(store).add("local", "semantic", "Review reminder", "user")
 
 

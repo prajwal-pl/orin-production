@@ -16,7 +16,7 @@ def test_concurrent_dashboard_runtime_initialization_migrates_once(tmp_path):
         stores = list(pool.map(lambda _: TaskStore(path), range(12)))
     assert len(stores) == 12
     with stores[0].connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 8
 
 
 def test_usage_and_source_verification_are_owner_scoped(tmp_path, monkeypatch):

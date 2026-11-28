@@ -21,6 +21,24 @@ import { EmptyState, Notice, StatusBadge } from "./ui";
 const filters = ["All", "Running", "Paused", "Completed"] as const;
 type TaskFilter = (typeof filters)[number];
 
+function pauseMessage(task: Task): string {
+  const detail = task.error_detail?.trim();
+  if (task.error === "MissingCredential") {
+    const source = detail?.split(";")[0] || "A connected source is missing";
+    return `${source}. Connect it in Connections, then resume.`;
+  }
+  if (task.error === "BudgetExhausted") {
+    return "Paused because this task's model budget is exhausted. Increase the budget, then resume.";
+  }
+  if (task.error === "ProviderCallError") {
+    return "Paused because no model was available. Try resuming later.";
+  }
+  if (detail) {
+    return `Paused after a runtime error: ${detail}`;
+  }
+  return `Paused after an unexpected error (${task.error}). Resume it to try again; if it happens again, check Connections and the runtime log.`;
+}
+
 function ResultText({ text }: { text: string }) {
   return (
     <div className="task-result">
@@ -226,7 +244,7 @@ export function TasksPanel({
                 <Notice kind="error">
                   {interrupted
                     ? "This run was interrupted before it finished. Resume it to continue from the last checkpoint."
-                    : `Paused after ${selected.error}. You can resume when its dependency is available.`}
+                    : pauseMessage(selected)}
                 </Notice>
               )}
               {(selected.status === "pending" ||

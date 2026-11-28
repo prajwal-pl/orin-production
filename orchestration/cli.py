@@ -4,13 +4,12 @@ import argparse
 import asyncio
 import os
 
-from dotenv import load_dotenv
-
+from orchestration.config import load_environment
 from orchestration.runtime import Runtime, task_reply
 
 
 async def run_command(request: str, session_id: str):
-    load_dotenv()
+    load_environment()
     service = Runtime()
     owner = os.getenv("ORIN_CLI_USER", "local")
     task = await service.submit(owner, session_id, request)
@@ -19,7 +18,7 @@ async def run_command(request: str, session_id: str):
 
 
 async def resume_command(task_id: str):
-    load_dotenv()
+    load_environment()
     service = Runtime()
     owner = os.getenv("ORIN_CLI_USER", "local")
     result = await service.run(owner, task_id)

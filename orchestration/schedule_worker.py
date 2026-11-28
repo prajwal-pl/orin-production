@@ -3,8 +3,7 @@
 import argparse
 import asyncio
 
-from dotenv import load_dotenv
-
+from orchestration.config import load_environment
 from orchestration.runtime import Runtime
 from orchestration.scheduler import dispatch_due
 
@@ -21,7 +20,7 @@ async def run_worker(once: bool = False, poll_seconds: int = 15) -> None:
 
 
 def main() -> None:
-    load_dotenv()
+    load_environment()
     parser = argparse.ArgumentParser(description="Run due Orin schedules")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--poll-seconds", type=int, default=15)

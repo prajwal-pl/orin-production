@@ -214,6 +214,14 @@ ORIN_CALENDAR_ALLOWED_USERS=local
 # ORIN_GOOGLE_CLIENT_FILE=~/.orion/config/google_oauth_client.json
 ```
 
+Orin reads configuration from `ORIN_ENV_FILE` when set, then `.env` in the
+current directory, then `~/.orion/config/.env`, then the source checkout `.env`.
+The process environment always wins. The packaged desktop app is started by the
+desktop environment, not from the repository root, so put shared credentials in
+`~/.orion/config/.env` (mode `0600`) when you launch it from the application
+menu. Otherwise the launcher and workbench run without tokens and tasks pause
+with a missing-credential error.
+
 Set `ORIN_GITHUB_ALLOWED_USERS` to the Telegram ID or CLI/API owner that may use
 the GitHub account. It defaults to `local` when unset. The API token grants access
 only to `ORIN_API_USER`, which defaults to `local`. The CLI owner is `local` by

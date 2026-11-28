@@ -250,6 +250,7 @@ async def test_direct_google_read_pauses_when_token_missing(integration_env, mon
     task = await service.submit("local", "mail", "Show my Gmail inbox")
     paused = await service.run("local", task["id"])
     assert paused["status"] == "paused" and paused["error"] == "MissingCredential"
+    assert "not connected" in paused["error_detail"]
     assert "not connected" in task_reply(paused)
     assert service.store.usage_for_task(task["id"]) == []
 

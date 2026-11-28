@@ -15,7 +15,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import StateGraph, START, END
 
 from orchestration.github import fetch_notifications, summarize_notifications, GITHUB_NOTIFICATIONS
-from orchestration.context import ArtifactStore, ContextItem, build_context
+from orchestration.context import ArtifactStore, ContextItem, build_context, redact_text
 from orchestration.agents import configured_models, inference_options, invoke_result
 from orchestration.model_budget import BudgetExhausted, ModelRecord, ModelRouter, TaskBudget
 from orchestration.planner import mcp_tool_catalog, plan_request, tool_catalog
@@ -37,6 +37,13 @@ from orchestration.productivity import prepare_meeting, follow_up_queue
 from orchestration.mcp_registry import MCPRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _failure_detail(error: Exception) -> str:
+    """A short, redacted explanation stored alongside the exception type name."""
+    detail = redact_text(str(error)).replace("\n", " ").strip()
+    return detail[:500]
+
 
 _HELP_INTENT = re.compile(
     r"^(?:/help|help|what can you (?:do|help with)(?: for me)?|"
@@ -677,7 +684,9 @@ class Runtime:
                             logger.exception("Post-task learning failed", extra={"task_id": task_id})
                 except Exception as error:
                     logger.error("Task execution paused after failure", extra={"task_id": task_id})
-                    self.store.transition(task_id, owner, ("running",), "paused", error=type(error).__name__)
+                    self.store.transition(task_id, owner, ("running",), "paused",
+                                          error=type(error).__name__,
+                                          error_detail=_failure_detail(error))
         except asyncio.CancelledError:
             # The client disconnected, the process is shutting down, or a
             # delegation timed out. Release the claim so a later resume can run
@@ -692,7 +701,9 @@ class Runtime:
             raise
         except Exception as error:
             logger.error("Task setup failed", extra={"task_id": task_id})
-            self.store.transition(task_id, owner, ("running",), "paused", error=type(error).__name__)
+            self.store.transition(task_id, owner, ("running",), "paused",
+                                  error=type(error).__name__,
+                                  error_detail=_failure_detail(error))
         finally:
             _mark_run(task_id, False)
         return self.store.get_task(task_id, owner)

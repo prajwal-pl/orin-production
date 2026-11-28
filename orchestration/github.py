@@ -6,6 +6,8 @@ from urllib.parse import quote, urlparse
 
 import httpx
 
+from orchestration.integrations import MissingCredential
+
 
 @dataclass(frozen=True)
 class Capability:
@@ -38,7 +40,9 @@ def notification_link(repository: str, subject_url: str | None) -> str:
 async def fetch_notifications() -> list[dict]:
     token = os.getenv("GITHUB_TOKEN", "").strip()
     if not token:
-        raise RuntimeError("GITHUB_TOKEN is required for GitHub notifications")
+        raise MissingCredential(
+            "GitHub is not connected; add GITHUB_TOKEN to the local configuration, then resume"
+        )
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",

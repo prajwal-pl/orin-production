@@ -34,14 +34,19 @@ database and authorization rules. A generic OS notification is sent for new
 pending approvals, completed or paused tasks, and unexpected runtime stops.
 Notification polling uses a private, randomly generated API token unless
 `ORIN_API_TOKEN` is already set; it does not expose the token to the webview.
-Closing the desktop process stops its sidecar. Closing the workbench window
-returns to the launcher so the runtime can be stopped or restarted.
+Closing the desktop process stops its sidecar. The sidecar also exits within a
+few seconds if the shell process disappears unexpectedly, so a terminated
+launcher does not leave a stale loopback runtime behind. Closing the workbench
+window returns to the launcher so the runtime can be stopped or restarted.
 
 The desktop shell adds no second agent implementation. Google OAuth, service
 grants, and model configuration follow the same README instructions as the
-browser control center. Environment-provided credentials are inherited by the
-sidecar. A tray icon is deferred; the launcher remains the explicit lifecycle
-control.
+browser control center. A launcher started from the application menu does not
+inherit a repository working directory, so the sidecar resolves configuration
+from `ORIN_ENV_FILE`, the current directory `.env`, `~/.orion/config/.env`, or
+the source checkout. Keep shared credentials in `~/.orion/config/.env` with mode
+`0600` for an installed build. A tray icon is deferred; the launcher remains the
+explicit lifecycle control.
 
 ## Verification
 

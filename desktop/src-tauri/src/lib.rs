@@ -164,6 +164,7 @@ fn start_runtime(app: AppHandle) -> Result<(), String> {
         .args(["--port", &port.to_string()])
         .env("ORIN_API_TOKEN", &token)
         .env("ORIN_API_USER", &owner)
+        .env("ORIN_PARENT_PID", std::process::id().to_string())
         .set_process_group(true)
         .kill_on_drop(true);
     let (mut receiver, child) = command.spawn().map_err(|error| error.to_string())?;
